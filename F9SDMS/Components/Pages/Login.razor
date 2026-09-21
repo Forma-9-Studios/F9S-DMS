@@ -1,0 +1,109 @@
+﻿
+@page "/login"
+@layout EmptyLayout
+@using System.ComponentModel.DataAnnotations
+
+<PageTitle>Sign In</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-form-side">
+            <h1>Sign in</h1>
+
+            <EditForm Model="@loginModel" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+
+                <div class="field">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    <InputText @bind-Value="loginModel.Email"
+                               type="email"
+                               placeholder="Email address"
+                               autocomplete="username" />
+                </div>
+                <ValidationMessage For="@(() => loginModel.Email)" class="field-error" />
+
+                <div class="field">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    <InputText @bind-Value="loginModel.Password"
+                               type="@passwordFieldType"
+                               placeholder="Password"
+                               autocomplete="current-password" />
+                    <button type="button" class="toggle-visibility" @onclick="TogglePasswordVisibility"
+                            aria-label="@(showPassword ? "Hide password" : "Show password")">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    </button>
+                </div>
+                <ValidationMessage For="@(() => loginModel.Password)" class="field-error" />
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <p class="error-text">@errorMessage</p>
+                }
+
+                <div class="form-footer-links">
+                    <a href="/forgot-password">Forgot Your Password?</a>
+                </div>
+
+                <button type="submit" class="login-button" disabled="@isSubmitting">
+                    @(isSubmitting ? "SIGNING IN..." : "LOGIN")
+                </button>
+            </EditForm>
+        </div>
+
+        <div class="brand-side">
+            <div class="brand-placeholder">Logo &amp; brand colors go here</div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly LoginModel loginModel = new();
+    private bool showPassword;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    private string passwordFieldType => showPassword ? "text" : "password";
+
+    private void TogglePasswordVisibility()
+    {
+        showPassword = !showPassword;
+    }
+
+    private async Task HandleLogin()
+    {
+        errorMessage = null;
+        isSubmitting = true;
+
+        try
+        {
+            // TODO: replace with real authentication once Identity/EF Core is wired up.
+            // e.g. var result = await AuthService.SignInAsync(loginModel.Email, loginModel.Password);
+            await Task.Delay(400);
+
+            errorMessage = "Login not connected to a backend yet.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private class LoginModel
+    {
+        [Required(ErrorMessage = "Email is required.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password is required.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

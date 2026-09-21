@@ -1,0 +1,194 @@
+﻿.login-page {
+    --panel-dark: #33424a;
+    --panel-dark-2: #2b383f;
+    --card-white: #ffffff;
+    --text-primary: #1f2a30;
+    --text-muted: #6b7680;
+    --field-bg: #eef1f4;
+    --field-border: #d7dde2;
+    --accent: #2f6f5e;
+    --accent-hover: #285e50;
+    --focus-ring: rgba(47, 111, 94, 0.35);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: linear-gradient(160deg, rgba(30,40,45,0.55), rgba(30,40,45,0.15)), linear-gradient(115deg, #4a5a60 0%, #5c6b70 35%, #cfd6d6 60%, #8f9a9c 100%);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 860px;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    background: var(--card-white);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px -15px rgba(0,0,0,0.35);
+}
+
+.login-form-side {
+    padding: 56px 56px 48px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+    .login-form-side h1 {
+        font-size: 30px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 32px;
+    }
+
+.field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--field-bg);
+    border: 1px solid var(--field-border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 4px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+    .field:focus-within {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+
+    .field svg {
+        flex: none;
+        width: 18px;
+        height: 18px;
+        color: var(--text-muted);
+    }
+
+    .field ::deep input {
+        border: none;
+        background: transparent;
+        outline: none;
+        font-size: 15px;
+        color: var(--text-primary);
+        width: 100%;
+        font-family: inherit;
+    }
+
+        .field ::deep input::placeholder {
+            color: var(--text-muted);
+        }
+
+    .field button.toggle-visibility {
+        flex: none;
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 2px;
+        color: var(--text-muted);
+        display: flex;
+    }
+
+.field-error {
+    display: block;
+    font-size: 13px;
+    color: #b3413a;
+    margin: -2px 0 8px;
+}
+
+.form-footer-links {
+    text-align: right;
+    margin: 12px 0 4px;
+}
+
+    .form-footer-links a {
+        font-size: 13.5px;
+        color: var(--accent);
+        text-decoration: underline;
+    }
+
+        .form-footer-links a:hover {
+            color: var(--accent-hover);
+        }
+
+.error-text {
+    font-size: 13px;
+    color: #b3413a;
+    margin: 4px 0 0;
+}
+
+.login-button {
+    width: 100%;
+    margin-top: 16px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+    .login-button:hover:not(:disabled) {
+        background: var(--accent-hover);
+    }
+
+    .login-button:disabled {
+        opacity: 0.7;
+        cursor: default;
+    }
+
+    .login-button:focus-visible {
+        outline: 3px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
+
+/* Right panel — reserved for brand image / logo / colors, to be supplied later */
+.brand-side {
+    background: linear-gradient(165deg, var(--panel-dark) 0%, var(--panel-dark-2) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+}
+
+.brand-placeholder {
+    width: 100%;
+    max-width: 220px;
+    aspect-ratio: 1 / 0.55;
+    border: 1.5px dashed rgba(255,255,255,0.35);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.55);
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.5;
+    padding: 16px;
+}
+
+@media (max-width: 720px) {
+    .login-card {
+        grid-template-columns: 1fr;
+        max-width: 420px;
+    }
+
+    .brand-side {
+        order: -1;
+        padding: 32px;
+        min-height: 140px;
+    }
+
+    .brand-placeholder {
+        max-width: 160px;
+    }
+
+    .login-form-side {
+        padding: 40px 32px 40px;
+    }
+}
