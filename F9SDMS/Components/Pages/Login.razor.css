@@ -1,20 +1,21 @@
 ﻿.login-page {
-    --panel-dark: #33424a;
-    --panel-dark-2: #2b383f;
+    --teal: #098993;
+    --teal-hover: #076e76;
+    --abyss: #0c1a27;
+    --abyss-2: #142838;
+    --stone: #606060;
+    --sand: #d3b492;
     --card-white: #ffffff;
-    --text-primary: #1f2a30;
-    --text-muted: #6b7680;
-    --field-bg: #eef1f4;
-    --field-border: #d7dde2;
-    --accent: #2f6f5e;
-    --accent-hover: #285e50;
-    --focus-ring: rgba(47, 111, 94, 0.35);
+    --field-bg: #f4f6f7;
+    --field-border: #dde3e5;
+    --focus-ring: rgba(9, 137, 147, 0.3);
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: linear-gradient(160deg, rgba(30,40,45,0.55), rgba(30,40,45,0.15)), linear-gradient(115deg, #4a5a60 0%, #5c6b70 35%, #cfd6d6 60%, #8f9a9c 100%);
+    background: radial-gradient(circle at 15% 20%, rgba(9,137,147,0.35), transparent 45%), radial-gradient(circle at 85% 80%, rgba(9,137,147,0.25), transparent 50%), linear-gradient(160deg, var(--abyss-2) 0%, var(--abyss) 100%);
 }
 
 .login-card {
@@ -36,9 +37,10 @@
 }
 
     .login-form-side h1 {
-        font-size: 30px;
+        font-family: 'Montserrat', sans-serif;
         font-weight: 700;
-        color: var(--text-primary);
+        font-size: 30px;
+        color: var(--abyss);
         margin: 0 0 32px;
     }
 
@@ -55,7 +57,7 @@
 }
 
     .field:focus-within {
-        border-color: var(--accent);
+        border-color: var(--teal);
         box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
@@ -63,21 +65,22 @@
         flex: none;
         width: 18px;
         height: 18px;
-        color: var(--text-muted);
+        color: var(--stone);
     }
 
     .field ::deep input {
         border: none;
         background: transparent;
         outline: none;
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 400;
         font-size: 15px;
-        color: var(--text-primary);
+        color: var(--abyss);
         width: 100%;
-        font-family: inherit;
     }
 
         .field ::deep input::placeholder {
-            color: var(--text-muted);
+            color: var(--stone);
         }
 
     .field button.toggle-visibility {
@@ -86,12 +89,13 @@
         background: none;
         cursor: pointer;
         padding: 2px;
-        color: var(--text-muted);
+        color: var(--stone);
         display: flex;
     }
 
 .field-error {
     display: block;
+    font-family: 'Montserrat', sans-serif;
     font-size: 13px;
     color: #b3413a;
     margin: -2px 0 8px;
@@ -103,16 +107,19 @@
 }
 
     .form-footer-links a {
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 600;
         font-size: 13.5px;
-        color: var(--accent);
+        color: var(--teal);
         text-decoration: underline;
     }
 
         .form-footer-links a:hover {
-            color: var(--accent-hover);
+            color: var(--teal-hover);
         }
 
 .error-text {
+    font-family: 'Montserrat', sans-serif;
     font-size: 13px;
     color: #b3413a;
     margin: 4px 0 0;
@@ -121,20 +128,21 @@
 .login-button {
     width: 100%;
     margin-top: 16px;
-    background: var(--accent);
+    background: var(--teal);
     color: #fff;
     border: none;
     border-radius: 6px;
     padding: 14px;
-    font-size: 15px;
+    font-family: 'Montserrat', sans-serif;
     font-weight: 600;
+    font-size: 15px;
     letter-spacing: 0.02em;
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
     .login-button:hover:not(:disabled) {
-        background: var(--accent-hover);
+        background: var(--teal-hover);
     }
 
     .login-button:disabled {
@@ -147,29 +155,18 @@
         outline-offset: 2px;
     }
 
-/* Right panel — reserved for brand image / logo / colors, to be supplied later */
 .brand-side {
-    background: linear-gradient(165deg, var(--panel-dark) 0%, var(--panel-dark-2) 100%);
+    background: linear-gradient(165deg, var(--abyss-2) 0%, var(--abyss) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 40px;
 }
 
-.brand-placeholder {
+.brand-logo {
     width: 100%;
-    max-width: 220px;
-    aspect-ratio: 1 / 0.55;
-    border: 1.5px dashed rgba(255,255,255,0.35);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255,255,255,0.55);
-    font-size: 13px;
-    text-align: center;
-    line-height: 1.5;
-    padding: 16px;
+    max-width: 280px;
+    height: auto;
 }
 
 @media (max-width: 720px) {
@@ -184,8 +181,8 @@
         min-height: 140px;
     }
 
-    .brand-placeholder {
-        max-width: 160px;
+    .brand-logo {
+        max-width: 200px;
     }
 
     .login-form-side {
