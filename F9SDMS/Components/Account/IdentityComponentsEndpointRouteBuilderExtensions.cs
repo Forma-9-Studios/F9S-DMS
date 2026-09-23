@@ -41,10 +41,26 @@ namespace Microsoft.AspNetCore.Routing
             });
 
             accountGroup.MapPost("/Logout", async (
-                ClaimsPrincipal user,
-                SignInManager<ApplicationUser> signInManager,
-                [FromForm] string returnUrl) =>
+     ClaimsPrincipal user,
+     SignInManager<ApplicationUser> signInManager,
+     [FromServices] ApplicationDbContext dbContext,
+     [FromForm] string returnUrl) =>
             {
+                var userId = signInManager.UserManager.GetUserId(user);
+                if (userId is not null)
+                {
+                    var openSession = dbContext.AttendanceSessions
+                        .Where(s => s.EmployeeId == userId && s.ClockOutTime == null)
+                        .OrderByDescending(s => s.ClockInTime)
+                        .FirstOrDefault();
+
+                    if (openSession is not null)
+                    {
+                        openSession.ClockOutTime = DateTime.Now;
+                        await dbContext.SaveChangesAsync();
+                    }
+                }
+
                 await signInManager.SignOutAsync();
                 return TypedResults.LocalRedirect($"~/{returnUrl}");
             });

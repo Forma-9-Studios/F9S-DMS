@@ -5,5 +5,6 @@ namespace F9SDMS.Data
 {
     public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
     {
+        public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
     }
 }

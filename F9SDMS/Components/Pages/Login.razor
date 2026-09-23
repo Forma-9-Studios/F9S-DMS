@@ -6,6 +6,7 @@
 @using F9SDMS.Data
 @using F9SDMS.Components.Account
 
+@inject ApplicationDbContext DbContext
 @inject SignInManager<ApplicationUser> SignInManager
 @inject ILogger<Login> Logger
 @inject NavigationManager NavigationManager
@@ -111,6 +112,18 @@
         if (result.Succeeded)
         {
             Logger.LogInformation("User logged in.");
+
+            var user = await SignInManager.UserManager.FindByEmailAsync(Input.Email);
+            if (user is not null)
+            {
+                DbContext.AttendanceSessions.Add(new AttendanceSession
+                {
+                    EmployeeId = user.Id,
+                    ClockInTime = DateTime.Now
+                });
+                await DbContext.SaveChangesAsync();
+            }
+
             RedirectManager.RedirectTo(ReturnUrl);
         }
         else if (result.RequiresTwoFactor)

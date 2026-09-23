@@ -1,0 +1,213 @@
+﻿.dashboard-page {
+    display: flex;
+    min-height: 100vh;
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6f7;
+}
+
+.sidebar {
+    width: 240px;
+    flex: none;
+    background: #0c1a27;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 0;
+}
+
+.sidebar-logo {
+    width: 140px;
+    height: auto;
+    display: block;
+    margin: 0 24px 16px;
+}
+
+.sidebar-title {
+    padding: 0 24px 28px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+}
+
+.navlink {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    color: rgba(255,255,255,0.75);
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    margin: 0 12px;
+    text-decoration: none;
+    background: none;
+    border: none;
+    width: calc(100% - 24px);
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+    .navlink:hover {
+        background: rgba(255,255,255,0.06);
+        color: #ffffff;
+    }
+
+    .navlink.active {
+        background: #098993;
+        color: #ffffff;
+    }
+
+.logout-btn {
+    color: rgba(255,255,255,0.5);
+}
+
+.sidebar-spacer {
+    flex-grow: 1;
+}
+
+.main-content {
+    flex-grow: 1;
+    padding: 40px 48px;
+    box-sizing: border-box;
+}
+
+.timer-card {
+    background: #0c1a27;
+    border-radius: 16px;
+    padding: 36px 40px;
+    max-width: 520px;
+}
+
+.timer-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3ddc84;
+    display: inline-block;
+}
+
+.timer-value {
+    font-size: 48px;
+    font-weight: 700;
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+}
+
+.timer-caption {
+    font-size: 14px;
+    color: rgba(255,255,255,0.55);
+    margin-top: 8px;
+}
+.header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+}
+
+.welcome-text {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0c1a27;
+}
+
+.welcome-date {
+    font-size: 14px;
+    color: #606060;
+    margin-top: 4px;
+}
+
+.avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #098993;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+}
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(12, 26, 39, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 32px;
+    width: 360px;
+    box-shadow: 0 24px 48px -12px rgba(0,0,0,0.35);
+}
+
+.modal-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #0c1a27;
+    margin-bottom: 10px;
+}
+
+.modal-body {
+    font-size: 14px;
+    color: #606060;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.modal-btn-cancel {
+    background: none;
+    border: 1px solid #dde3e5;
+    color: #0c1a27;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+    .modal-btn-cancel:hover {
+        background: #f4f6f7;
+    }
+
+.modal-btn-confirm {
+    background: #098993;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+    .modal-btn-confirm:hover {
+        background: #076e76;
+    }
