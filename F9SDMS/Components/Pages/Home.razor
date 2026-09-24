@@ -26,6 +26,13 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
             My Timesheet
         </a>
+        @if (isAdmin)
+        {
+            <a href="/admin/add-employee" class="navlink">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" /></svg>
+                Add Employee
+            </a>
+        }
         <a href="#" class="navlink">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
             Projects
@@ -52,24 +59,112 @@
             </div>
             <div class="avatar">@initials</div>
         </div>
-        <div class="timer-card">
-            <div class="timer-status">
-                <span class="status-dot"></span>
-                <span>Clocked in</span>
+
+        @if (!isAdmin)
+        {
+            <div class="timer-card">
+                <div class="timer-status">
+                    <span class="status-dot"></span>
+                    <span>Clocked in</span>
+                </div>
+                <div class="timer-value">@elapsed</div>
+                <div class="timer-caption">
+                    @if (clockInTime.HasValue)
+                    {
+                        <span>Since @clockInTime.Value.ToString("h:mm tt") &middot; auto logout after 8 hours or end of shift</span>
+                    }
+                    else
+                    {
+                        <span>No active session found</span>
+                    }
+                </div>
             </div>
-            <div class="timer-value">@elapsed</div>
-            <div class="timer-caption">
-                @if (clockInTime.HasValue)
-                {
-                    <span>Since @clockInTime.Value.ToString("h:mm tt") &middot; auto logout after 8 hours or end of shift</span>
-                }
-                else
-                {
-                    <span>No active session found</span>
-                }
+        }
+
+        @if (isAdmin)
+        {
+            var trackedEmployees = employees.Where(e => e.Role != "Admin").ToList();
+            var activeList = trackedEmployees.Where(e => activeEmployeeIds.Contains(e.Id)).ToList();
+            var inactiveList = trackedEmployees.Where(e => !activeEmployeeIds.Contains(e.Id)).ToList();
+
+            <div class="status-panels">
+                <div class="status-panel active-panel">
+                    <div class="status-panel-header active-header">Active Users (@activeList.Count)</div>
+                    <div class="status-panel-list">
+                        @foreach (var emp in activeList)
+                        {
+                            <div class="status-panel-row">
+                                <span class="status-dot-sm active-dot"></span>
+                                <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div>
+                                <span>@emp.FirstName @emp.LastName</span>
+                            </div>
+                        }
+                        @if (activeList.Count == 0)
+                        {
+                            <div class="status-panel-empty">No one is currently clocked in.</div>
+                        }
+                    </div>
+                </div>
+
+                <div class="status-panel inactive-panel">
+                    <div class="status-panel-header inactive-header">Inactive Users (@inactiveList.Count)</div>
+                    <div class="status-panel-list">
+                        @foreach (var emp in inactiveList)
+                        {
+                            <div class="status-panel-row">
+                                <span class="status-dot-sm inactive-dot"></span>
+                                <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div>
+                                <span>@emp.FirstName @emp.LastName</span>
+                            </div>
+                        }
+                        @if (inactiveList.Count == 0)
+                        {
+                            <div class="status-panel-empty">Everyone is clocked in.</div>
+                        }
+                    </div>
+                </div>
             </div>
-        </div>
+        }
+
+        @if (isAdmin)
+        {
+            <div class="employees-section">
+                <div class="employees-header">
+                    <h2>Employees</h2>
+                </div>
+
+                <table class="employees-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var emp in employees)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="name-cell">
+                                        <div class="row-avatar">@GetInitials(emp.FirstName, emp.LastName)</div>
+                                        <span>@emp.FirstName @emp.LastName</span>
+                                    </div>
+                                </td>
+                                <td>@emp.Email</td>
+                                <td><span class="role-badge role-@emp.Role.ToLower()">@emp.Role</span></td>
+                                <td>
+                                    <button type="button" class="edit-btn" @onclick="() => OpenEditModal(emp)">Edit</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
+
     @if (showLogoutConfirm)
     {
         <div class="modal-overlay">
@@ -79,6 +174,48 @@
                 <div class="modal-actions">
                     <button type="button" class="modal-btn-cancel" @onclick="() => showLogoutConfirm = false">Cancel</button>
                     <button type="submit" form="logoutForm" class="modal-btn-confirm">Log out</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (editingEmployee is not null)
+    {
+        <div class="modal-overlay">
+            <div class="modal-card edit-card">
+                <div class="modal-title">Edit Employee</div>
+
+                <div class="form-field">
+                    <label>First name</label>
+                    <input class="form-input" @bind="editFirstName" />
+                </div>
+                <div class="form-field">
+                    <label>Last name</label>
+                    <input class="form-input" @bind="editLastName" />
+                </div>
+                <div class="form-field">
+                    <label>Role</label>
+                    <select class="form-input" @bind="editRole">
+                        <option value="Employee">Employee</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>New password (leave blank to keep current)</label>
+                    <input class="form-input" @bind="editNewPassword" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(editStatusMessage))
+                {
+                    <p class="edit-status @(editSucceeded ? "success" : "error")">@editStatusMessage</p>
+                }
+
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn-cancel" @onclick="CloseEditModal">Cancel</button>
+                    <button type="button" class="modal-btn-confirm" @onclick="SaveEdit" disabled="@isSavingEdit">
+                        @(isSavingEdit ? "Saving..." : "Save Changes")
+                    </button>
                 </div>
             </div>
         </div>
@@ -93,34 +230,168 @@
     private string initials = "";
     private string todayDate = DateTime.Now.ToString("dddd, MMMM d, yyyy");
     private bool showLogoutConfirm = false;
+    private bool isAdmin = false;
+    private HashSet<string> activeEmployeeIds = new();
+    private int adminRefreshCounter = 0;
+
+    private List<EmployeeRow> employees = new();
+
+    private ApplicationUser? editingEmployee;
+    private string editFirstName = "";
+    private string editLastName = "";
+    private string editRole = "Employee";
+    private string editNewPassword = "";
+    private string? editStatusMessage;
+    private bool editSucceeded;
+    private bool isSavingEdit;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var userId = UserManager.GetUserId(authState.User);
 
+        isAdmin = authState.User.IsInRole("Admin");
+
         if (userId is not null)
         {
             var user = await UserManager.FindByIdAsync(userId);
-            if (user?.Email is not null)
+            if (user is not null)
             {
-                var localPart = user.Email.Split('@')[0];
-                employeeName = char.ToUpper(localPart[0]) + localPart[1..];
-                initials = localPart.Length >= 2
-                    ? localPart[..2].ToUpper()
-                    : localPart[..1].ToUpper();
+                if (!string.IsNullOrWhiteSpace(user.FirstName))
+                {
+                    employeeName = user.FirstName;
+                    initials = (user.FirstName[..1] + (string.IsNullOrWhiteSpace(user.LastName) ? "" : user.LastName[..1])).ToUpper();
+                }
+                else if (user.Email is not null)
+                {
+                    var localPart = user.Email.Split('@')[0];
+                    employeeName = char.ToUpper(localPart[0]) + localPart[1..];
+                    initials = localPart.Length >= 2
+                        ? localPart[..2].ToUpper()
+                        : localPart[..1].ToUpper();
+                }
             }
 
-            var session = await DbContext.AttendanceSessions
-                .Where(s => s.EmployeeId == userId && s.ClockOutTime == null)
-                .OrderByDescending(s => s.ClockInTime)
-                .FirstOrDefaultAsync();
+            if (!isAdmin)
+            {
+                var session = await DbContext.AttendanceSessions
+                    .Where(s => s.EmployeeId == userId && s.ClockOutTime == null)
+                    .OrderByDescending(s => s.ClockInTime)
+                    .FirstOrDefaultAsync();
 
-            clockInTime = session?.ClockInTime;
+                clockInTime = session?.ClockInTime;
+            }
+            else
+            {
+                await LoadEmployees();
+            }
         }
 
         UpdateElapsed();
-        _timer = new System.Threading.Timer(_ => UpdateElapsed(), null, 0, 1000);
+        _timer = new System.Threading.Timer(async _ => await TimerTick(), null, 0, 1000);
+    }
+    
+    private async Task TimerTick()
+    {
+        UpdateElapsed();
+
+        if (isAdmin)
+        {
+            adminRefreshCounter++;
+            if (adminRefreshCounter >= 10)
+            {
+                adminRefreshCounter = 0;
+                await LoadEmployees();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task LoadEmployees()
+    {
+        var allUsers = UserManager.Users.ToList();
+        var rows = new List<EmployeeRow>();
+
+        foreach (var u in allUsers)
+        {
+            var roles = await UserManager.GetRolesAsync(u);
+            rows.Add(new EmployeeRow
+            {
+                Id = u.Id,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                Email = u.Email ?? "",
+                Role = roles.FirstOrDefault() ?? "Employee"
+            });
+        }
+
+        employees = rows.OrderBy(r => r.FirstName).ToList();
+
+        activeEmployeeIds = (await DbContext.AttendanceSessions
+            .Where(s => s.ClockOutTime == null)
+            .Select(s => s.EmployeeId)
+            .Distinct()
+            .ToListAsync())
+            .ToHashSet();
+    }
+
+    private void OpenEditModal(EmployeeRow emp)
+    {
+        editingEmployee = UserManager.Users.FirstOrDefault(u => u.Id == emp.Id);
+        editFirstName = emp.FirstName;
+        editLastName = emp.LastName;
+        editRole = emp.Role;
+        editNewPassword = "";
+        editStatusMessage = null;
+    }
+
+    private void CloseEditModal()
+    {
+        editingEmployee = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (editingEmployee is null) return;
+
+        isSavingEdit = true;
+        editStatusMessage = null;
+
+        editingEmployee.FirstName = editFirstName;
+        editingEmployee.LastName = editLastName;
+
+        var updateResult = await UserManager.UpdateAsync(editingEmployee);
+        if (!updateResult.Succeeded)
+        {
+            editSucceeded = false;
+            editStatusMessage = string.Join(" ", updateResult.Errors.Select(e => e.Description));
+            isSavingEdit = false;
+            return;
+        }
+
+        var currentRoles = await UserManager.GetRolesAsync(editingEmployee);
+        if (!currentRoles.Contains(editRole))
+        {
+            await UserManager.RemoveFromRolesAsync(editingEmployee, currentRoles);
+            await UserManager.AddToRoleAsync(editingEmployee, editRole);
+        }
+
+        if (!string.IsNullOrWhiteSpace(editNewPassword))
+        {
+            var resetToken = await UserManager.GeneratePasswordResetTokenAsync(editingEmployee);
+            var resetResult = await UserManager.ResetPasswordAsync(editingEmployee, resetToken, editNewPassword);
+            if (!resetResult.Succeeded)
+            {
+                editSucceeded = false;
+                editStatusMessage = string.Join(" ", resetResult.Errors.Select(e => e.Description));
+                isSavingEdit = false;
+                return;
+            }
+        }
+
+        await LoadEmployees();
+        isSavingEdit = false;
+        editingEmployee = null;
     }
 
     private void UpdateElapsed()
@@ -138,5 +409,22 @@
     public void Dispose()
     {
         _timer?.Dispose();
+    }
+
+    private class EmployeeRow
+    {
+        public string Id { get; set; } = "";
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Role { get; set; } = "";
+    }
+
+    private string GetInitials(string firstName, string lastName)
+    {
+        var f = string.IsNullOrWhiteSpace(firstName) ? "" : firstName[..1];
+        var l = string.IsNullOrWhiteSpace(lastName) ? "" : lastName[..1];
+        var result = (f + l).ToUpper();
+        return string.IsNullOrEmpty(result) ? "?" : result;
     }
 }

@@ -1,0 +1,170 @@
+﻿.admin-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 15% 20%, rgba(9,137,147,0.35), transparent 45%), radial-gradient(circle at 85% 80%, rgba(9,137,147,0.25), transparent 50%), linear-gradient(160deg, #142838 0%, #0c1a27 100%);
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 40px 20px;
+    box-sizing: border-box;
+}
+
+.admin-card {
+    width: 100%;
+    max-width: 480px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 40px -12px rgba(12, 26, 39, 0.15);
+    box-sizing: border-box;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #606060;
+    text-decoration: none;
+    margin-bottom: 24px;
+}
+
+    .back-link:hover {
+        color: #098993;
+    }
+
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 28px;
+}
+
+.header-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(9, 137, 147, 0.1);
+    color: #098993;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-header h1 {
+    font-size: 21px;
+    font-weight: 700;
+    color: #0c1a27;
+    margin: 0 0 4px;
+}
+
+.page-subtitle {
+    font-size: 13px;
+    color: #606060;
+    margin: 0;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.form-field {
+    margin-bottom: 16px;
+}
+
+    .form-field label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #606060;
+        margin-bottom: 6px;
+    }
+
+.form-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 13px;
+    border: 1px solid #dde3e5;
+    border-radius: 8px;
+    background: #f8f9fa;
+    font-family: inherit;
+    font-size: 14px;
+    color: #0c1a27;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+    .form-input:focus {
+        outline: none;
+        border-color: #098993;
+        background: #ffffff;
+        box-shadow: 0 0 0 3px rgba(9, 137, 147, 0.15);
+    }
+
+.select-input {
+    cursor: pointer;
+}
+
+.field-error {
+    display: block;
+    font-size: 12px;
+    color: #b3413a;
+    margin-top: 5px;
+}
+
+.status-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+}
+
+    .status-banner.success {
+        background: #e6f5e9;
+        color: #1a7a34;
+    }
+
+    .status-banner.error {
+        background: #fbeceb;
+        color: #b3413a;
+    }
+
+.submit-button {
+    width: 100%;
+    background: #098993;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 13px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+    .submit-button:hover:not(:disabled) {
+        background: #076e76;
+    }
+
+    .submit-button:disabled {
+        opacity: 0.7;
+        cursor: default;
+    }
+
+@media (max-width: 480px) {
+    .admin-card {
+        padding: 28px 24px;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}

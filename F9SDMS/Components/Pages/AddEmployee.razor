@@ -1,0 +1,146 @@
+﻿@page "/admin/add-employee"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@using System.ComponentModel.DataAnnotations
+@using F9SDMS.Data
+@using Microsoft.AspNetCore.Identity
+
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject NavigationManager NavigationManager
+
+<PageTitle>Add Employee</PageTitle>
+
+<div class="admin-page">
+    <div class="admin-card">
+        <a href="/" class="back-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
+            Back to Dashboard
+        </a>
+
+        <div class="page-header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" /></svg>
+            </div>
+            <div>
+                <h1>Add Employee</h1>
+                <p class="page-subtitle">Create a new account and assign a role.</p>
+            </div>
+        </div>
+
+        <EditForm Model="Input" OnValidSubmit="HandleCreate" FormName="addEmployee">
+            <DataAnnotationsValidator />
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label>First name</label>
+                    <InputText @bind-Value="Input.FirstName" class="form-input" />
+                    <ValidationMessage For="() => Input.FirstName" class="field-error" />
+                </div>
+                <div class="form-field">
+                    <label>Last name</label>
+                    <InputText @bind-Value="Input.LastName" class="form-input" />
+                    <ValidationMessage For="() => Input.LastName" class="field-error" />
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label>Email</label>
+                <InputText @bind-Value="Input.Email" type="email" class="form-input" autocomplete="off" />
+                <ValidationMessage For="() => Input.Email" class="field-error" />
+            </div>
+
+            <div class="form-field">
+                <label>Temporary password</label>
+                <InputText @bind-Value="Input.Password" type="text" class="form-input" autocomplete="off" />
+                <ValidationMessage For="() => Input.Password" class="field-error" />
+            </div>
+
+            <div class="form-field">
+                <label>Role</label>
+                <InputSelect @bind-Value="Input.Role" class="form-input select-input">
+                    <option value="Employee">Employee</option>
+                    <option value="Manager">Manager</option>
+                    <option value="Admin">Admin</option>
+                </InputSelect>
+            </div>
+
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div class="status-banner @(succeeded ? "success" : "error")">
+                    @if (succeeded)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                    }
+                    <span>@statusMessage</span>
+                </div>
+            }
+
+            <button type="submit" class="submit-button" disabled="@isSubmitting">
+                @(isSubmitting ? "Creating..." : "Create Employee")
+            </button>
+        </EditForm>
+    </div>
+</div>
+@code {
+    private InputModel Input { get; set; } = new();
+    private string? statusMessage;
+    private bool succeeded;
+    private bool isSubmitting;
+
+    private async Task HandleCreate()
+    {
+        isSubmitting = true;
+        statusMessage = null;
+
+        var newUser = new ApplicationUser
+        {
+            UserName = Input.Email,
+            Email = Input.Email,
+            EmailConfirmed = true,
+            FirstName = Input.FirstName,
+            LastName = Input.LastName
+        };
+
+        var result = await UserManager.CreateAsync(newUser, Input.Password);
+
+        if (result.Succeeded)
+        {
+            await UserManager.AddToRoleAsync(newUser, Input.Role);
+            succeeded = true;
+            statusMessage = $"{Input.FirstName} {Input.LastName} was created successfully as {Input.Role}.";
+            Input = new InputModel();
+        }
+        else
+        {
+            succeeded = false;
+            statusMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+        }
+
+        isSubmitting = false;
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        public string FirstName { get; set; } = "";
+
+        [Required]
+        public string LastName { get; set; } = "";
+
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required]
+        [MinLength(6)]
+        public string Password { get; set; } = "";
+
+        public string Role { get; set; } = "Employee";
+    }
+}

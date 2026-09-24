@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Identity
 @using F9SDMS.Data
 @using F9SDMS.Components.Account
+@using Microsoft.EntityFrameworkCore
 
 @inject ApplicationDbContext DbContext
 @inject SignInManager<ApplicationUser> SignInManager
@@ -38,7 +39,7 @@
                     <InputText @bind-Value="Input.Email"
                                type="email"
                                placeholder="Email address"
-                               autocomplete="username" />
+                               autocomplete="off" />
                 </div>
                 <ValidationMessage For="() => Input.Email" class="field-error" />
 
@@ -116,12 +117,25 @@
             var user = await SignInManager.UserManager.FindByEmailAsync(Input.Email);
             if (user is not null)
             {
-                DbContext.AttendanceSessions.Add(new AttendanceSession
+                var isAdminUser = await SignInManager.UserManager.IsInRoleAsync(user, "Admin");
+                if (!isAdminUser)
                 {
-                    EmployeeId = user.Id,
-                    ClockInTime = DateTime.Now
-                });
-                await DbContext.SaveChangesAsync();
+                    var staleSession = await DbContext.AttendanceSessions
+                        .Where(s => s.EmployeeId == user.Id && s.ClockOutTime == null)
+                        .FirstOrDefaultAsync();
+
+                    if (staleSession is not null)
+                    {
+                        staleSession.ClockOutTime = DateTime.Now;
+                    }
+
+                    DbContext.AttendanceSessions.Add(new AttendanceSession
+                    {
+                        EmployeeId = user.Id,
+                        ClockInTime = DateTime.Now
+                    });
+                    await DbContext.SaveChangesAsync();
+                }
             }
 
             RedirectManager.RedirectTo(ReturnUrl);
