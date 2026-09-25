@@ -81,12 +81,13 @@
             </div>
         }
 
-        @if (isAdmin)
+        @if (canViewTeamStatus)
         {
             var trackedEmployees = employees.Where(e => e.Role != "Admin").ToList();
             var activeList = trackedEmployees.Where(e => activeEmployeeIds.Contains(e.Id)).ToList();
             var inactiveList = trackedEmployees.Where(e => !activeEmployeeIds.Contains(e.Id)).ToList();
-
+            
+            <h2 class="section-title">Team Status</h2>
             <div class="status-panels">
                 <div class="status-panel active-panel">
                     <div class="status-panel-header active-header">Active Users (@activeList.Count)</div>
@@ -231,6 +232,8 @@
     private string todayDate = DateTime.Now.ToString("dddd, MMMM d, yyyy");
     private bool showLogoutConfirm = false;
     private bool isAdmin = false;
+    private bool isManager = false;
+    private bool canViewTeamStatus = false;
     private HashSet<string> activeEmployeeIds = new();
     private int adminRefreshCounter = 0;
 
@@ -251,6 +254,8 @@
         var userId = UserManager.GetUserId(authState.User);
 
         isAdmin = authState.User.IsInRole("Admin");
+        isManager = authState.User.IsInRole("Manager");
+        canViewTeamStatus = isAdmin || isManager;
 
         if (userId is not null)
         {
@@ -281,7 +286,8 @@
 
                 clockInTime = session?.ClockInTime;
             }
-            else
+
+            if (canViewTeamStatus)
             {
                 await LoadEmployees();
             }
@@ -295,7 +301,7 @@
     {
         UpdateElapsed();
 
-        if (isAdmin)
+        if (canViewTeamStatus)
         {
             adminRefreshCounter++;
             if (adminRefreshCounter >= 10)
