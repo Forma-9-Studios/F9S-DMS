@@ -7,5 +7,6 @@ namespace F9SDMS.Data
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
+        public string CurrentStatus { get; set; } = "Available";
     }
 }

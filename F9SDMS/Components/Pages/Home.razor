@@ -10,10 +10,13 @@
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+
+<script src="/js/theme.js"></script>
 
 <PageTitle>Dashboard</PageTitle>
 
-<div class="dashboard-page">
+<div class="dashboard-page @(isDarkMode ? "dark-mode" : "")">
     <div class="sidebar">
         <img src="/images/f9s-logo.png" alt="Forma 9 Studios" class="sidebar-logo" />
         <div class="sidebar-title">F9SDMS</div>
@@ -57,7 +60,19 @@
                 <div class="welcome-text">Welcome back, @employeeName</div>
                 <div class="welcome-date">@todayDate</div>
             </div>
-            <div class="avatar">@initials</div>
+            <div class="header-actions">
+                <button type="button" class="theme-toggle-btn" @onclick="ToggleTheme" aria-label="Toggle dark mode">
+                    @if (isDarkMode)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+                    }
+                </button>
+                <div class="avatar">@initials</div>
+            </div>
         </div>
 
         @if (!isAdmin)
@@ -78,6 +93,51 @@
                         <span>No active session found</span>
                     }
                 </div>
+
+                <div class="status-row">
+                    <div>
+                        <div class="status-row-label">Current status</div>
+                        <div class="status-row-value">@currentStatus</div>
+                    </div>
+                    <div class="status-dropdown-wrapper">
+                        <button type="button" class="status-change-btn" @onclick="() => showStatusDropdown = !showStatusDropdown">
+                            Change status
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="6 9 12 15 18 9" /></svg>
+                        </button>
+
+                        @if (showStatusDropdown)
+                        {
+                            <div class="status-dropdown">
+                                <div class="status-dropdown-item @(currentStatus == AvailableStatus ? "current" : "")" @onclick="() => SetStatus(AvailableStatus)">
+                                    Available
+                                    @if (currentStatus == AvailableStatus)
+                                    {
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
+                                    }
+                                </div>
+                                @foreach (var preset in presetStatuses)
+                                {
+                                    <div class="status-dropdown-item @(currentStatus == preset ? "current" : "")" @onclick="() => SetStatus(preset)">
+                                        @preset
+                                        @if (currentStatus == preset)
+                                        {
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12" /></svg>
+                                        }
+                                    </div>
+                                }
+                                <div class="status-dropdown-others">
+                                    <div class="status-dropdown-others-label">Others</div>
+                                    <div class="status-dropdown-others-row">
+                                        <input class="status-dropdown-input" placeholder="If others, please specify" @bind="customStatusInput" @bind:event="oninput" @onkeydown="HandleStatusKeyDown" />
+                                        <button type="button" class="status-dropdown-send" @onclick="SubmitCustomStatus">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
         }
 
@@ -97,7 +157,8 @@
                             <div class="status-panel-row">
                                 <span class="status-dot-sm active-dot"></span>
                                 <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div>
-                                <span>@emp.FirstName @emp.LastName</span>
+                                <span class="status-panel-name">@emp.FirstName @emp.LastName</span>
+                                <span class="status-pill @GetStatusClass(emp.Status)">@emp.Status</span>
                             </div>
                         }
                         @if (activeList.Count == 0)
@@ -233,9 +294,42 @@
     private bool showLogoutConfirm = false;
     private bool isAdmin = false;
     private bool isManager = false;
+    private bool isDarkMode = false;
+    private int adminRefreshCounter = 0;
     private bool canViewTeamStatus = false;
     private HashSet<string> activeEmployeeIds = new();
-    private int adminRefreshCounter = 0;
+
+    private string? currentUserId;
+    private string currentStatus = "Available";
+    private bool showStatusDropdown = false;
+    private string customStatusInput = "";
+
+    private readonly string[] presetStatuses = { "Assist Colleague", "Break", "Email", "Idle", "IT Maintenance", "Meeting", "Timesheet" };
+
+    private const string AvailableStatus = "Available";
+
+    private async Task HandleStatusKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SubmitCustomStatus();
+        }
+    }
+
+    private static readonly Dictionary<string, string> StatusClasses = new()
+    {
+        ["Available"] = "status-available",
+        ["Assist Colleague"] = "status-assist",
+        ["Break"] = "status-break",
+        ["Email"] = "status-email",
+        ["Idle"] = "status-idle",
+        ["IT Maintenance"] = "status-it",
+        ["Meeting"] = "status-meeting",
+        ["Timesheet"] = "status-timesheet",
+    };
+
+    private string GetStatusClass(string status) => StatusClasses.TryGetValue(status, out var c) ? c : "status-other";
+
 
     private List<EmployeeRow> employees = new();
 
@@ -259,9 +353,12 @@
 
         if (userId is not null)
         {
+            currentUserId = userId;
             var user = await UserManager.FindByIdAsync(userId);
             if (user is not null)
             {
+                currentStatus = string.IsNullOrWhiteSpace(user.CurrentStatus) ? "Available" : user.CurrentStatus;
+
                 if (!string.IsNullOrWhiteSpace(user.FirstName))
                 {
                     employeeName = user.FirstName;
@@ -296,7 +393,25 @@
         UpdateElapsed();
         _timer = new System.Threading.Timer(async _ => await TimerTick(), null, 0, 1000);
     }
-    
+   
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var saved = await JS.InvokeAsync<string?>("themeStorage.get");
+            if (saved == "dark")
+            {
+                isDarkMode = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        isDarkMode = !isDarkMode;
+        await JS.InvokeVoidAsync("themeStorage.set", isDarkMode ? "dark" : "light");
+    }
     private async Task TimerTick()
     {
         UpdateElapsed();
@@ -315,7 +430,7 @@
 
     private async Task LoadEmployees()
     {
-        var allUsers = UserManager.Users.ToList();
+        var allUsers = UserManager.Users.AsNoTracking().ToList();
         var rows = new List<EmployeeRow>();
 
         foreach (var u in allUsers)
@@ -327,7 +442,8 @@
                 FirstName = u.FirstName,
                 LastName = u.LastName,
                 Email = u.Email ?? "",
-                Role = roles.FirstOrDefault() ?? "Employee"
+                Role = roles.FirstOrDefault() ?? "Employee",
+                Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus
             });
         }
 
@@ -339,6 +455,36 @@
             .Distinct()
             .ToListAsync())
             .ToHashSet();
+    }
+
+    private async Task SetStatus(string status)
+    {
+        currentStatus = status;
+        showStatusDropdown = false;
+
+        if (currentUserId is not null)
+        {
+            var user = await UserManager.FindByIdAsync(currentUserId);
+            if (user is not null)
+            {
+                user.CurrentStatus = status;
+                await UserManager.UpdateAsync(user);
+            }
+        }
+
+        if (canViewTeamStatus)
+        {
+            await LoadEmployees();
+        }
+    }
+
+    private async Task SubmitCustomStatus()
+    {
+        if (!string.IsNullOrWhiteSpace(customStatusInput))
+        {
+            await SetStatus(customStatusInput.Trim());
+            customStatusInput = "";
+        }
     }
 
     private void OpenEditModal(EmployeeRow emp)
@@ -424,6 +570,7 @@
         public string LastName { get; set; } = "";
         public string Email { get; set; } = "";
         public string Role { get; set; } = "";
+        public string Status { get; set; } = "Available";
     }
 
     private string GetInitials(string firstName, string lastName)
