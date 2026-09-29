@@ -1,0 +1,120 @@
+﻿/* Branded shell for the Identity pages (lockout, access denied, password pages, account settings).
+   Colors match Login.razor.css. Page content is rendered by child components, so it is styled via ::deep. */
+.account-page {
+    --teal: #098993;
+    --teal-hover: #076e76;
+    --abyss: #0c1a27;
+    --abyss-2: #142838;
+    --stone: #606060;
+    --danger: #b3413a;
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px;
+    background: radial-gradient(circle at 15% 20%, rgba(9,137,147,0.35), transparent 45%), radial-gradient(circle at 85% 80%, rgba(9,137,147,0.25), transparent 50%), linear-gradient(160deg, var(--abyss-2) 0%, var(--abyss) 100%);
+}
+
+.account-logo {
+    width: 100%;
+    max-width: 220px;
+    height: auto;
+}
+
+.account-card {
+    width: 100%;
+    max-width: 720px;
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 40px 48px 28px;
+    box-shadow: 0 30px 60px -15px rgba(0,0,0,0.35);
+    color: var(--abyss);
+}
+
+    .account-card ::deep h1 {
+        font-weight: 700;
+        font-size: 26px;
+        margin: 0 0 12px;
+        color: var(--abyss);
+    }
+
+    .account-card ::deep h2,
+    .account-card ::deep h3,
+    .account-card ::deep h4 {
+        font-weight: 600;
+        color: var(--abyss);
+    }
+
+    .account-card ::deep h2 {
+        font-size: 18px;
+    }
+
+    .account-card ::deep p {
+        font-size: 15px;
+        line-height: 1.55;
+        color: var(--stone);
+    }
+
+    .account-card ::deep .text-danger {
+        color: var(--danger) !important;
+    }
+
+    .account-card ::deep h1.text-danger {
+        color: var(--abyss) !important;
+    }
+
+    .account-card ::deep a {
+        color: var(--teal);
+    }
+
+        .account-card ::deep a:hover {
+            color: var(--teal-hover);
+        }
+
+    .account-card ::deep .btn-primary {
+        background: var(--teal);
+        border-color: var(--teal);
+        font-weight: 600;
+    }
+
+        .account-card ::deep .btn-primary:hover,
+        .account-card ::deep .btn-primary:focus {
+            background: var(--teal-hover);
+            border-color: var(--teal-hover);
+        }
+
+    .account-card ::deep .form-control:focus {
+        border-color: var(--teal);
+        box-shadow: 0 0 0 3px rgba(9, 137, 147, 0.3);
+    }
+
+    .account-card ::deep .nav-pills .nav-link.active {
+        background: var(--teal);
+    }
+
+.account-footer {
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 1px solid #e6eaec;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+    .account-footer a {
+        color: var(--teal);
+        text-decoration: none;
+    }
+
+        .account-footer a:hover {
+            color: var(--teal-hover);
+            text-decoration: underline;
+        }
+
+@media (max-width: 720px) {
+    .account-card {
+        padding: 32px 24px 24px;
+    }
+}

@@ -3,6 +3,7 @@ using System.Text.Json;
 using F9SDMS.Components.Account.Pages;
 using F9SDMS.Components.Account.Pages.Manage;
 using F9SDMS.Data;
+using F9SDMS.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -51,6 +52,7 @@ namespace Microsoft.AspNetCore.Routing
      ClaimsPrincipal user,
      SignInManager<ApplicationUser> signInManager,
      [FromServices] ApplicationDbContext dbContext,
+     [FromServices] IAppClock clock,
      [FromForm] string? returnUrl) =>
             {
                 if (!IsSameOriginRequest(context.Request))
@@ -69,7 +71,7 @@ namespace Microsoft.AspNetCore.Routing
 
                     foreach (var openSession in openSessions)
                     {
-                        openSession.ClockOutTime = DateTime.Now;
+                        openSession.ClockOutTime = clock.Now;
                     }
 
                     if (openSessions.Count > 0)

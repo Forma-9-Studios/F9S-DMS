@@ -1,19 +1,44 @@
 ﻿@inherits LayoutComponentBase
-@layout F9SDMS.Components.Layout.MainLayout
+@layout F9SDMS.Components.Layout.EmptyLayout
 @inject NavigationManager NavigationManager
 
-@if (HttpContext is null)
-{
-    <p>Loading...</p>
-}
-else
-{
-    @Body
-}
+<HeadContent>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+</HeadContent>
+
+<div class="account-page">
+    <img src="/images/f9s-logo.png" alt="Forma 9 Studios" class="account-logo" />
+
+    <div class="account-card">
+        @if (HttpContext is null)
+        {
+            <p>Loading...</p>
+        }
+        else
+        {
+            @Body
+        }
+
+        <div class="account-footer">
+            @if (IsSignedIn)
+            {
+                <a href="/">&larr; Back to dashboard</a>
+            }
+            else
+            {
+                <a href="/login">&larr; Back to sign in</a>
+            }
+        </div>
+    </div>
+</div>
 
 @code {
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
+
+    private bool IsSignedIn => HttpContext?.User.Identity?.IsAuthenticated == true;
 
     protected override void OnParametersSet()
     {

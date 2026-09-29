@@ -17,6 +17,7 @@ builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddHostedService<StaleSessionCleanupService>();
+builder.Services.AddSingleton<IAppClock, AppClock>();
 
 builder.Services.AddAuthentication(options =>
 {

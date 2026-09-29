@@ -12,6 +12,7 @@
 @inject ILogger<Login> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
+@inject F9SDMS.Services.IAppClock Clock
 
 <PageTitle>Sign In</PageTitle>
 
@@ -130,7 +131,7 @@
 
                 foreach (var session in previousSessions)
                 {
-                    session.ClockOutTime = DateTime.Now;
+                    session.ClockOutTime = Clock.Now;
                 }
 
                 if (previousSessions.Count > 0)
@@ -144,21 +145,7 @@
                 var isAdminUser = await SignInManager.UserManager.IsInRoleAsync(user, "Admin");
                 if (!isAdminUser)
                 {
-                    var staleSessions = await DbContext.AttendanceSessions
-                        .Where(s => s.EmployeeId == user.Id && s.ClockOutTime == null)
-                        .ToListAsync();
-
-                    foreach (var staleSession in staleSessions)
-                    {
-                        staleSession.ClockOutTime = DateTime.Now;
-                    }
-
-                    DbContext.AttendanceSessions.Add(new AttendanceSession
-                    {
-                        EmployeeId = user.Id,
-                        ClockInTime = DateTime.Now
-                    });
-                    await DbContext.SaveChangesAsync();
+                    await F9SDMS.Services.AttendanceRules.ResumeOrStartSessionAsync(DbContext, user.Id, Clock.Now);
                 }
             }
 

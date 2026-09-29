@@ -12,6 +12,8 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject F9SDMS.Services.IAppClock Clock
 
 <script src="/js/theme.js"></script>
 
@@ -80,18 +82,35 @@
         {
             <div class="timer-card">
                 <div class="timer-status">
-                    <span class="status-dot"></span>
-                    <span>Clocked in</span>
+                    @if (clockInTime.HasValue)
+                    {
+                        <span class="status-dot"></span>
+                        <span>Clocked in</span>
+                    }
+                    else
+                    {
+                        <span class="status-dot status-dot-off"></span>
+                        <span>Not clocked in</span>
+                    }
                 </div>
                 <div class="timer-value">@elapsed</div>
                 <div class="timer-caption">
                     @if (clockInTime.HasValue)
                     {
-                        <span>Since @clockInTime.Value.ToString("h:mm tt") &middot; auto logout after 8 hours or end of shift</span>
+                        <span>Since @clockInTime.Value.ToString("h:mm tt") &middot; auto logout after 8 hours</span>
                     }
                     else
                     {
-                        <span>No active session found</span>
+                        <span>
+                            @(sessionEnded
+                                ? "Your session ended because the dashboard was closed or inactive for more than 15 minutes."
+                                : "No active session found.")
+                        </span>
+                        <div>
+                            <button type="button" class="clock-in-btn" @onclick="ClockIn" disabled="@isClockingIn">
+                                @(isClockingIn ? "Clocking in..." : "Clock in")
+                            </button>
+                        </div>
                     }
                 </div>
 
@@ -293,7 +312,12 @@
     private string elapsed = "00:00:00";
     private string employeeName = "";
     private string initials = "";
-    private string todayDate = DateTime.Now.ToString("dddd, MMMM d, yyyy");
+    private string todayDate = "";
+    private bool _autoLogoutStarted;
+    private int? currentSessionId;
+    private bool sessionEnded;
+    private bool isClockingIn;
+    private int heartbeatCounter = 0;
     private bool showLogoutConfirm = false;
     private bool isAdmin = false;
     private bool isManager = false;
@@ -347,6 +371,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // The page is interactive but the router isn't, so nothing redirects automatically when
+        // the server revokes this login (role change, password reset). Listen for it ourselves.
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        todayDate = Clock.Now.ToString("dddd, MMMM d, yyyy");
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var userId = UserManager.GetUserId(authState.User);
 
@@ -386,7 +415,15 @@
                     .OrderByDescending(s => s.ClockInTime)
                     .FirstOrDefaultAsync();
 
-                clockInTime = session?.ClockInTime;
+                if (session is not null)
+                {
+                    currentSessionId = session.Id;
+                    clockInTime = session.ClockInTime;
+
+                    // Records that the dashboard is open, or ends the session if it already
+                    // expired while the dashboard was closed.
+                    await SendHeartbeat();
+                }
             }
 
             if (canViewTeamStatus)
@@ -443,6 +480,25 @@
         {
             UpdateElapsed();
 
+            // Enforce the 8-hour limit on an open dashboard: log out (which also clocks out).
+            if (!_autoLogoutStarted && clockInTime.HasValue && Clock.Now - clockInTime.Value >= F9SDMS.Services.AttendanceRules.MaxSessionLength)
+            {
+                _autoLogoutStarted = true;
+                await JS.InvokeVoidAsync("f9sdms.submitLogout");
+                return;
+            }
+
+            // Heartbeat: record that the employee's dashboard is still open.
+            if (currentSessionId.HasValue)
+            {
+                heartbeatCounter++;
+                if (heartbeatCounter >= (int)F9SDMS.Services.AttendanceRules.HeartbeatInterval.TotalSeconds)
+                {
+                    heartbeatCounter = 0;
+                    await SendHeartbeat();
+                }
+            }
+
             if (canViewTeamStatus)
             {
                 adminRefreshCounter++;
@@ -461,6 +517,71 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error refreshing dashboard.");
+        }
+    }
+
+    private async Task SendHeartbeat()
+    {
+        if (currentSessionId is not int sessionId) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var now = Clock.Now;
+        var session = await db.AttendanceSessions
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.ClockOutTime == null);
+
+        var autoClockOut = session is null
+            ? null
+            : F9SDMS.Services.AttendanceRules.GetAutoClockOutTime(session, now);
+
+        if (session is null || autoClockOut is not null)
+        {
+            // The session already ended (logged out elsewhere, or not seen for longer than the
+            // grace period, e.g. the laptop was asleep). Don't revive it.
+            if (session is not null)
+            {
+                session.ClockOutTime = autoClockOut;
+                await db.SaveChangesAsync();
+            }
+
+            currentSessionId = null;
+            clockInTime = null;
+            elapsed = "00:00:00";
+            sessionEnded = true;
+            return;
+        }
+
+        session.LastSeenTime = now;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task ClockIn()
+    {
+        if (isAdmin || currentUserId is null || isClockingIn) return;
+
+        isClockingIn = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var session = await F9SDMS.Services.AttendanceRules.ResumeOrStartSessionAsync(db, currentUserId, Clock.Now);
+
+            currentSessionId = session.Id;
+            clockInTime = session.ClockInTime;
+            sessionEnded = false;
+            heartbeatCounter = 0;
+            UpdateElapsed();
+
+            if (canViewTeamStatus)
+            {
+                await LoadEmployees();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clock in failed.");
+        }
+        finally
+        {
+            isClockingIn = false;
         }
     }
 
@@ -672,15 +793,36 @@
     {
         if (clockInTime.HasValue)
         {
-            var span = DateTime.Now - clockInTime.Value;
+            var span = Clock.Now - clockInTime.Value;
             if (span < TimeSpan.Zero) span = TimeSpan.Zero;
             elapsed = span.ToString(@"hh\:mm\:ss");
         }
     }
 
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> stateTask)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                var state = await stateTask;
+                if (!_disposed && state.User.Identity?.IsAuthenticated != true)
+                {
+                    // Full reload: the server rejects the old cookie and sends them to /login.
+                    NavigationManager.NavigateTo("/", forceLoad: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Could not handle authentication state change.");
+            }
+        });
+    }
+
     public void Dispose()
     {
         _disposed = true;
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         _timer?.Dispose();
         _timer = null;
     }

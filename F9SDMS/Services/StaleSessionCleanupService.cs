@@ -7,8 +7,7 @@ namespace F9SDMS.Services
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<StaleSessionCleanupService> _logger;
-        private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
-        private static readonly TimeSpan MaxSessionLength = TimeSpan.FromHours(8);
+        private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(1);
 
         public StaleSessionCleanupService(IServiceScopeFactory scopeFactory, ILogger<StaleSessionCleanupService> logger)
         {
@@ -25,18 +24,26 @@ namespace F9SDMS.Services
                     using var scope = _scopeFactory.CreateScope();
                     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                    var cutoff = DateTime.Now - MaxSessionLength;
+                    var clock = scope.ServiceProvider.GetRequiredService<IAppClock>();
+                    var now = clock.Now;
 
-                    var staleSessions = await dbContext.AttendanceSessions
-                        .Where(s => s.ClockOutTime == null && s.ClockInTime <= cutoff)
+                    var openSessions = await dbContext.AttendanceSessions
+                        .Where(s => s.ClockOutTime == null)
                         .ToListAsync(stoppingToken);
+
+                    var staleSessions = new List<AttendanceSession>();
+                    foreach (var session in openSessions)
+                    {
+                        var clockOut = AttendanceRules.GetAutoClockOutTime(session, now);
+                        if (clockOut is not null)
+                        {
+                            session.ClockOutTime = clockOut;
+                            staleSessions.Add(session);
+                        }
+                    }
 
                     if (staleSessions.Count > 0)
                     {
-                        foreach (var session in staleSessions)
-                        {
-                            session.ClockOutTime = session.ClockInTime.AddHours(8);
-                        }
 
                         await dbContext.SaveChangesAsync(stoppingToken);
                         _logger.LogInformation("Auto-closed {Count} stale attendance session(s).", staleSessions.Count);

@@ -14,5 +14,11 @@ namespace F9SDMS.Data
         public DateTime ClockInTime { get; set; }
 
         public DateTime? ClockOutTime { get; set; }
+
+        /// <summary>
+        /// Last time the employee's dashboard was open (updated about once a minute).
+        /// Null for sessions recorded before the heartbeat existed.
+        /// </summary>
+        public DateTime? LastSeenTime { get; set; }
     }
 }
