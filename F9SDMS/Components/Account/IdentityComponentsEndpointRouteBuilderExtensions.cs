@@ -40,30 +40,47 @@ namespace Microsoft.AspNetCore.Routing
                 return TypedResults.Challenge(properties, [provider]);
             });
 
+            // Logout is exempt from the automatic antiforgery check. The token embedded in an
+            // open dashboard tab is bound to whoever was signed in when that tab loaded, so it
+            // stops matching as soon as a different account signs in (or the session changes)
+            // in the same browser, which made logout fail with AntiforgeryValidationException.
+            // Cross-site requests are still rejected below using the browser's
+            // Sec-Fetch-Site / Origin headers.
             accountGroup.MapPost("/Logout", async (
+     HttpContext context,
      ClaimsPrincipal user,
      SignInManager<ApplicationUser> signInManager,
      [FromServices] ApplicationDbContext dbContext,
-     [FromForm] string returnUrl) =>
+     [FromForm] string? returnUrl) =>
             {
+                if (!IsSameOriginRequest(context.Request))
+                {
+                    return Results.BadRequest();
+                }
+
                 var userId = signInManager.UserManager.GetUserId(user);
                 if (userId is not null)
                 {
-                    var openSession = dbContext.AttendanceSessions
+                    // Close every open session for this user, not just the latest one,
+                    // so no leftover session keeps them listed as active.
+                    var openSessions = dbContext.AttendanceSessions
                         .Where(s => s.EmployeeId == userId && s.ClockOutTime == null)
-                        .OrderByDescending(s => s.ClockInTime)
-                        .FirstOrDefault();
+                        .ToList();
 
-                    if (openSession is not null)
+                    foreach (var openSession in openSessions)
                     {
                         openSession.ClockOutTime = DateTime.Now;
+                    }
+
+                    if (openSessions.Count > 0)
+                    {
                         await dbContext.SaveChangesAsync();
                     }
                 }
 
                 await signInManager.SignOutAsync();
-                return TypedResults.LocalRedirect($"~/{returnUrl}");
-            });
+                return Results.LocalRedirect($"~/{returnUrl}");
+            }).DisableAntiforgery();
 
             var manageGroup = accountGroup.MapGroup("/Manage").RequireAuthorization();
 
@@ -124,6 +141,26 @@ namespace Microsoft.AspNetCore.Routing
             });
 
             return accountGroup;
+        }
+
+        // Returns false when the browser tells us the request came from another site.
+        private static bool IsSameOriginRequest(HttpRequest request)
+        {
+            var fetchSite = request.Headers["Sec-Fetch-Site"].ToString();
+            if (!string.IsNullOrEmpty(fetchSite))
+            {
+                return string.Equals(fetchSite, "same-origin", StringComparison.OrdinalIgnoreCase);
+            }
+
+            var origin = request.Headers.Origin.ToString();
+            if (!string.IsNullOrEmpty(origin))
+            {
+                return Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
+                    && string.Equals(originUri.Authority, request.Host.Value, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Very old browsers send neither header; allow them rather than break logout.
+            return true;
         }
     }
 }

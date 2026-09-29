@@ -7,7 +7,8 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ILogger<Home> Logger
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
@@ -286,6 +287,8 @@
 
 @code {
     private System.Threading.Timer? _timer;
+    private volatile bool _disposed;
+    private bool _isRefreshingEmployees;
     private DateTime? clockInTime;
     private string elapsed = "00:00:00";
     private string employeeName = "";
@@ -376,7 +379,9 @@
 
             if (!isAdmin)
             {
-                var session = await DbContext.AttendanceSessions
+                await using var db = await DbFactory.CreateDbContextAsync();
+                var session = await db.AttendanceSessions
+                    .AsNoTracking()
                     .Where(s => s.EmployeeId == userId && s.ClockOutTime == null)
                     .OrderByDescending(s => s.ClockInTime)
                     .FirstOrDefaultAsync();
@@ -391,7 +396,10 @@
         }
 
         UpdateElapsed();
-        _timer = new System.Threading.Timer(async _ => await TimerTick(), null, 0, 1000);
+        // The timer fires on a thread-pool thread. OnTimerElapsed hands the work to the
+        // component's dispatcher and never lets an exception escape (an unhandled exception
+        // in a timer callback would terminate the whole server process).
+        _timer = new System.Threading.Timer(OnTimerElapsed, null, 1000, 1000);
     }
    
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -412,49 +420,100 @@
         isDarkMode = !isDarkMode;
         await JS.InvokeVoidAsync("themeStorage.set", isDarkMode ? "dark" : "light");
     }
+    private void OnTimerElapsed(object? state)
+    {
+        if (_disposed) return;
+
+        try
+        {
+            _ = InvokeAsync(TimerTick);
+        }
+        catch (Exception ex)
+        {
+            // The circuit may already be shutting down; nothing to do.
+            Logger.LogDebug(ex, "Dashboard timer tick could not be dispatched.");
+        }
+    }
+
     private async Task TimerTick()
     {
-        UpdateElapsed();
+        if (_disposed) return;
 
-        if (canViewTeamStatus)
+        try
         {
-            adminRefreshCounter++;
-            if (adminRefreshCounter >= 10)
+            UpdateElapsed();
+
+            if (canViewTeamStatus)
             {
-                adminRefreshCounter = 0;
-                await LoadEmployees();
-                await InvokeAsync(StateHasChanged);
+                adminRefreshCounter++;
+                if (adminRefreshCounter >= 10 && !_isRefreshingEmployees)
+                {
+                    adminRefreshCounter = 0;
+                    await LoadEmployees();
+                }
             }
+
+            if (!_disposed)
+            {
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing dashboard.");
         }
     }
 
     private async Task LoadEmployees()
     {
-        var allUsers = UserManager.Users.AsNoTracking().ToList();
-        var rows = new List<EmployeeRow>();
+        if (_isRefreshingEmployees) return;
+        _isRefreshingEmployees = true;
 
-        foreach (var u in allUsers)
+        try
         {
-            var roles = await UserManager.GetRolesAsync(u);
-            rows.Add(new EmployeeRow
+            // Use a short-lived DbContext per refresh so the background refresh never
+            // shares a context with UserManager or with user-triggered actions.
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var allUsers = await db.Users
+                .AsNoTracking()
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus })
+                .ToListAsync();
+
+            var userRoles = await (from ur in db.UserRoles
+                                   join r in db.Roles on ur.RoleId equals r.Id
+                                   select new { ur.UserId, r.Name })
+                                  .AsNoTracking()
+                                  .ToListAsync();
+
+            var rolesByUser = userRoles
+                .GroupBy(x => x.UserId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Name).FirstOrDefault(n => !string.IsNullOrEmpty(n)));
+
+            var rows = allUsers.Select(u => new EmployeeRow
             {
                 Id = u.Id,
                 FirstName = u.FirstName,
                 LastName = u.LastName,
                 Email = u.Email ?? "",
-                Role = roles.FirstOrDefault() ?? "Employee",
+                Role = rolesByUser.TryGetValue(u.Id, out var role) && role is not null ? role : "Employee",
                 Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus
-            });
+            }).ToList();
+
+            var activeIds = await db.AttendanceSessions
+                .AsNoTracking()
+                .Where(s => s.ClockOutTime == null)
+                .Select(s => s.EmployeeId)
+                .Distinct()
+                .ToListAsync();
+
+            employees = rows.OrderBy(r => r.FirstName).ToList();
+            activeEmployeeIds = activeIds.ToHashSet();
         }
-
-        employees = rows.OrderBy(r => r.FirstName).ToList();
-
-        activeEmployeeIds = (await DbContext.AttendanceSessions
-            .Where(s => s.ClockOutTime == null)
-            .Select(s => s.EmployeeId)
-            .Distinct()
-            .ToListAsync())
-            .ToHashSet();
+        finally
+        {
+            _isRefreshingEmployees = false;
+        }
     }
 
     private async Task SetStatus(string status)
@@ -502,49 +561,112 @@
         editingEmployee = null;
     }
 
+    private static readonly string[] AllowedRoles = { "Employee", "Manager", "Admin" };
+
     private async Task SaveEdit()
     {
         if (editingEmployee is null) return;
+        if (!isAdmin) return; // defense in depth: only admins can edit accounts
 
         isSavingEdit = true;
         editStatusMessage = null;
 
-        editingEmployee.FirstName = editFirstName;
-        editingEmployee.LastName = editLastName;
-
-        var updateResult = await UserManager.UpdateAsync(editingEmployee);
-        if (!updateResult.Succeeded)
+        try
         {
-            editSucceeded = false;
-            editStatusMessage = string.Join(" ", updateResult.Errors.Select(e => e.Description));
-            isSavingEdit = false;
-            return;
-        }
-
-        var currentRoles = await UserManager.GetRolesAsync(editingEmployee);
-        if (!currentRoles.Contains(editRole))
-        {
-            await UserManager.RemoveFromRolesAsync(editingEmployee, currentRoles);
-            await UserManager.AddToRoleAsync(editingEmployee, editRole);
-        }
-
-        if (!string.IsNullOrWhiteSpace(editNewPassword))
-        {
-            var resetToken = await UserManager.GeneratePasswordResetTokenAsync(editingEmployee);
-            var resetResult = await UserManager.ResetPasswordAsync(editingEmployee, resetToken, editNewPassword);
-            if (!resetResult.Succeeded)
+            if (!AllowedRoles.Contains(editRole))
             {
-                editSucceeded = false;
-                editStatusMessage = string.Join(" ", resetResult.Errors.Select(e => e.Description));
-                isSavingEdit = false;
+                ShowEditError("Please choose a valid role.");
                 return;
             }
-        }
 
-        await LoadEmployees();
-        isSavingEdit = false;
-        editingEmployee = null;
+            var currentRoles = await UserManager.GetRolesAsync(editingEmployee);
+            var roleChanged = !(currentRoles.Count == 1 && currentRoles[0] == editRole);
+
+            // Never allow the last Admin to be demoted, or nobody could manage accounts.
+            if (roleChanged && currentRoles.Contains("Admin") && editRole != "Admin")
+            {
+                var admins = await UserManager.GetUsersInRoleAsync("Admin");
+                if (admins.Count <= 1)
+                {
+                    ShowEditError("This is the only Admin account. Make someone else an Admin first.");
+                    return;
+                }
+            }
+
+            editingEmployee.FirstName = editFirstName;
+            editingEmployee.LastName = editLastName;
+
+            var updateResult = await UserManager.UpdateAsync(editingEmployee);
+            if (!updateResult.Succeeded)
+            {
+                ShowEditError(DescribeErrors(updateResult));
+                return;
+            }
+
+            if (roleChanged)
+            {
+                // Add the new role first so a failure never leaves the user with no role.
+                if (!currentRoles.Contains(editRole))
+                {
+                    var addResult = await UserManager.AddToRoleAsync(editingEmployee, editRole);
+                    if (!addResult.Succeeded)
+                    {
+                        ShowEditError("Could not change role: " + DescribeErrors(addResult));
+                        return;
+                    }
+                }
+
+                var rolesToRemove = currentRoles.Where(r => r != editRole).ToList();
+                if (rolesToRemove.Count > 0)
+                {
+                    var removeResult = await UserManager.RemoveFromRolesAsync(editingEmployee, rolesToRemove);
+                    if (!removeResult.Succeeded)
+                    {
+                        // Roll back the role we just added so the account is left as it was.
+                        if (!currentRoles.Contains(editRole))
+                        {
+                            await UserManager.RemoveFromRoleAsync(editingEmployee, editRole);
+                        }
+
+                        ShowEditError("Could not change role: " + DescribeErrors(removeResult));
+                        return;
+                    }
+                }
+
+                // Roles are stored in the user's login cookie. Changing the security stamp makes
+                // their existing sessions fail revalidation, so the old role stops working and
+                // they must sign in again.
+                await UserManager.UpdateSecurityStampAsync(editingEmployee);
+            }
+
+            if (!string.IsNullOrWhiteSpace(editNewPassword))
+            {
+                var resetToken = await UserManager.GeneratePasswordResetTokenAsync(editingEmployee);
+                var resetResult = await UserManager.ResetPasswordAsync(editingEmployee, resetToken, editNewPassword);
+                if (!resetResult.Succeeded)
+                {
+                    ShowEditError(DescribeErrors(resetResult));
+                    return;
+                }
+            }
+
+            await LoadEmployees();
+            editingEmployee = null;
+        }
+        finally
+        {
+            isSavingEdit = false;
+        }
     }
+
+    private void ShowEditError(string message)
+    {
+        editSucceeded = false;
+        editStatusMessage = message;
+    }
+
+    private static string DescribeErrors(IdentityResult result) =>
+        string.Join(" ", result.Errors.Select(e => e.Description));
 
     private void UpdateElapsed()
     {
@@ -554,13 +676,13 @@
             if (span < TimeSpan.Zero) span = TimeSpan.Zero;
             elapsed = span.ToString(@"hh\:mm\:ss");
         }
-
-        InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
+        _disposed = true;
         _timer?.Dispose();
+        _timer = null;
     }
 
     private class EmployeeRow

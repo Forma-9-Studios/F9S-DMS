@@ -93,36 +93,58 @@
     private bool succeeded;
     private bool isSubmitting;
 
+    private static readonly string[] AllowedRoles = { "Employee", "Manager", "Admin" };
+
     private async Task HandleCreate()
     {
         isSubmitting = true;
         statusMessage = null;
 
-        var newUser = new ApplicationUser
+        try
         {
-            UserName = Input.Email,
-            Email = Input.Email,
-            EmailConfirmed = true,
-            FirstName = Input.FirstName,
-            LastName = Input.LastName
-        };
+            if (!AllowedRoles.Contains(Input.Role))
+            {
+                succeeded = false;
+                statusMessage = "Please choose a valid role.";
+                return;
+            }
 
-        var result = await UserManager.CreateAsync(newUser, Input.Password);
+            var newUser = new ApplicationUser
+            {
+                UserName = Input.Email,
+                Email = Input.Email,
+                EmailConfirmed = true,
+                FirstName = Input.FirstName,
+                LastName = Input.LastName
+            };
 
-        if (result.Succeeded)
-        {
-            await UserManager.AddToRoleAsync(newUser, Input.Role);
+            var result = await UserManager.CreateAsync(newUser, Input.Password);
+            if (!result.Succeeded)
+            {
+                succeeded = false;
+                statusMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+                return;
+            }
+
+            var roleResult = await UserManager.AddToRoleAsync(newUser, Input.Role);
+            if (!roleResult.Succeeded)
+            {
+                // Don't leave an account behind without a role.
+                await UserManager.DeleteAsync(newUser);
+                succeeded = false;
+                statusMessage = "Could not assign the role, so the account was not created: "
+                    + string.Join(" ", roleResult.Errors.Select(e => e.Description));
+                return;
+            }
+
             succeeded = true;
             statusMessage = $"{Input.FirstName} {Input.LastName} was created successfully as {Input.Role}.";
             Input = new InputModel();
         }
-        else
+        finally
         {
-            succeeded = false;
-            statusMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+            isSubmitting = false;
         }
-
-        isSubmitting = false;
     }
 
     private sealed class InputModel
