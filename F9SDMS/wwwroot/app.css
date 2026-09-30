@@ -49,3 +49,192 @@ h1:focus {
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
 }
+
+/* ---- Scrollbars: slim, rounded, matching the F9S palette ---- */
+
+/* Chrome, Edge, Brave */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c3ccd1;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #098993;
+        background-clip: padding-box;
+    }
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb {
+    background: #2c4356;
+    background-clip: padding-box;
+}
+
+    .dark-mode ::-webkit-scrollbar-thumb:hover {
+        background: #14a3ad;
+        background-clip: padding-box;
+    }
+
+/* Firefox (doesn't support the rules above) */
+@supports not selector(::-webkit-scrollbar) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #c3ccd1 transparent;
+    }
+
+    .dark-mode,
+    .dark-mode * {
+        scrollbar-color: #2c4356 transparent;
+    }
+}
+
+/* ---- Theme (html gets .dark-mode from the server / theme toggle) ---- */
+body {
+    background: #f4f6f7;
+}
+
+html.dark-mode,
+html.dark-mode body {
+    background: #0a1420;
+}
+
+.theme-icon-sun,
+.theme-icon-moon {
+    display: flex;
+}
+
+.theme-icon-sun,
+.dark-mode .theme-icon-moon {
+    display: none;
+}
+
+.dark-mode .theme-icon-sun {
+    display: flex;
+}
+
+/* ---- Page loader ---- */
+.page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+    .page-loader.visible {
+        opacity: 1;
+    }
+
+.page-loader-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 40%;
+    background: #098993;
+    border-radius: 0 3px 3px 0;
+    animation: page-loader-slide 1.1s ease-in-out infinite;
+}
+
+.page-loader-card,
+.reconnect-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: #0c1a27;
+    color: #ffffff;
+    font-family: 'Montserrat', -apple-system, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.45);
+}
+
+.page-loader-card {
+    position: absolute;
+    right: 24px;
+    bottom: 24px;
+}
+
+.page-loader-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #14a3ad;
+    animation: page-loader-spin 0.8s linear infinite;
+}
+
+@keyframes page-loader-slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+}
+
+@keyframes page-loader-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-loader-bar,
+    .page-loader-spinner {
+        animation-duration: 3s;
+    }
+}
+
+/* ---- Reconnecting overlay (Blazor adds components-reconnect-* classes) ---- */
+.reconnect-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1001;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 32px;
+    background: rgba(12, 26, 39, 0.25);
+}
+
+    .reconnect-overlay.components-reconnect-show,
+    .reconnect-overlay.components-reconnect-failed,
+    .reconnect-overlay.components-reconnect-rejected {
+        display: flex;
+    }
+
+.reconnect-show-state,
+.reconnect-failed-state {
+    display: none;
+    align-items: center;
+    gap: 10px;
+}
+
+.components-reconnect-show .reconnect-show-state,
+.components-reconnect-failed .reconnect-failed-state,
+.components-reconnect-rejected .reconnect-failed-state {
+    display: flex;
+}
+
+.reconnect-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 5px 14px;
+    background: #098993;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+}

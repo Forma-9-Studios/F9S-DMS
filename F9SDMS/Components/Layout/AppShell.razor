@@ -1,0 +1,123 @@
+﻿@using F9SDMS.Data
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+
+@* Sidebar + header used by the pages that aren't the dashboard (Projects, Project details). *@
+
+
+<div class="app-page">
+    <nav class="sidebar" aria-label="Main">
+        <img src="/images/f9s-logo.png" alt="Forma 9 Studios" class="sidebar-logo" />
+        <div class="sidebar-title">F9SDMS</div>
+
+        <a href="/" class="navlink @(Active == "dashboard" ? "active" : "")">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+            Dashboard
+        </a>
+        <a href="#" class="navlink">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+            My Timesheet
+        </a>
+        @if (isAdmin)
+        {
+            <a href="/admin/add-employee" class="navlink">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" /></svg>
+                Add Employee
+            </a>
+        }
+        @if (isAdmin || isManager)
+        {
+            <a href="/projects" class="navlink @(Active == "projects" ? "active" : "")">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
+                Projects
+            </a>
+        }
+
+        <div class="sidebar-spacer"></div>
+
+        <form id="logoutForm" action="Account/Logout" method="post" style="display: none;">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="" />
+        </form>
+
+        <button type="button" class="navlink logout-btn" @onclick="() => showLogoutConfirm = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+            Log out
+        </button>
+    </nav>
+
+    <main class="main-content">
+        <div class="header-row">
+            <div>
+                <h1 class="page-title">@Title</h1>
+                @if (!string.IsNullOrEmpty(Subtitle))
+                {
+                    <div class="page-subtitle">@Subtitle</div>
+                }
+            </div>
+            <div class="header-actions">
+                @HeaderActions
+                <button type="button" class="theme-toggle-btn" onclick="f9sdms.toggleTheme()" aria-label="Toggle dark mode">
+                    <span class="theme-icon-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg></span>
+                    <span class="theme-icon-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg></span>
+                </button>
+                <div class="avatar">@initials</div>
+            </div>
+        </div>
+
+        @ChildContent
+    </main>
+
+    @if (showLogoutConfirm)
+    {
+        <div class="modal-overlay">
+            <div class="modal-card" role="dialog" aria-labelledby="logoutTitle">
+                <div class="modal-title" id="logoutTitle">Log out?</div>
+                <div class="modal-body">You'll need to sign in again to continue tracking your time.</div>
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn-cancel" @onclick="() => showLogoutConfirm = false">Cancel</button>
+                    <button type="submit" form="logoutForm" class="modal-btn-confirm">Log out</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Which sidebar link is highlighted: "dashboard" or "projects".</summary>
+    [Parameter] public string Active { get; set; } = "";
+
+    [Parameter] public string Title { get; set; } = "";
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>Buttons shown in the header, left of the theme toggle.</summary>
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool isAdmin;
+    private bool isManager;
+    private bool showLogoutConfirm;
+    private string initials = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        isAdmin = authState.User.IsInRole("Admin");
+        isManager = authState.User.IsInRole("Manager");
+
+        var userId = UserManager.GetUserId(authState.User);
+        if (userId is not null)
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user is not null)
+            {
+                var first = string.IsNullOrWhiteSpace(user.FirstName) ? (user.Email ?? "?") : user.FirstName;
+                var last = user.LastName ?? "";
+                initials = (first[..1] + (string.IsNullOrWhiteSpace(last) ? "" : last[..1])).ToUpper();
+            }
+        }
+    }
+}

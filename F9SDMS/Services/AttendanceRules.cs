@@ -53,12 +53,17 @@ namespace F9SDMS.Services
                 .ToListAsync();
 
             AttendanceSession? sessionToResume = null;
+            DateTime? lastEnded = null;
             foreach (var session in openSessions)
             {
                 var autoClockOut = GetAutoClockOutTime(session, now);
                 if (autoClockOut is not null)
                 {
                     session.ClockOutTime = autoClockOut;
+                    if (lastEnded is null || autoClockOut > lastEnded)
+                    {
+                        lastEnded = autoClockOut;
+                    }
                 }
                 else if (sessionToResume is null)
                 {
@@ -82,8 +87,17 @@ namespace F9SDMS.Services
                 db.AttendanceSessions.Add(sessionToResume);
             }
 
+            var startingNewSession = sessionToResume.Id == 0;
+
             sessionToResume.LastSeenTime = now;
             await db.SaveChangesAsync();
+
+            if (startingNewSession)
+            {
+                // Any project work from the previous session ended when that session did.
+                await ProjectWork.StopAsync(db, employeeId, lastEnded ?? now, clearCurrentProject: true);
+            }
+
             return sessionToResume;
         }
     }

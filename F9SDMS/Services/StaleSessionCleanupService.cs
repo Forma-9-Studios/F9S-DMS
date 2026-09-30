@@ -46,6 +46,13 @@ namespace F9SDMS.Services
                     {
 
                         await dbContext.SaveChangesAsync(stoppingToken);
+
+                        // Project work ends with the attendance session.
+                        foreach (var session in staleSessions)
+                        {
+                            await ProjectWork.StopAsync(dbContext, session.EmployeeId, session.ClockOutTime!.Value, clearCurrentProject: true);
+                        }
+
                         _logger.LogInformation("Auto-closed {Count} stale attendance session(s).", staleSessions.Count);
                     }
                 }

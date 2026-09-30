@@ -8,6 +8,7 @@
 @using Microsoft.EntityFrameworkCore
 
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ApplicationDbContext CircuitDb
 @inject ILogger<Home> Logger
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
@@ -15,11 +16,9 @@
 @inject NavigationManager NavigationManager
 @inject F9SDMS.Services.IAppClock Clock
 
-<script src="/js/theme.js"></script>
-
 <PageTitle>Dashboard</PageTitle>
 
-<div class="dashboard-page @(isDarkMode ? "dark-mode" : "")">
+<div class="dashboard-page">
     <div class="sidebar">
         <img src="/images/f9s-logo.png" alt="Forma 9 Studios" class="sidebar-logo" />
         <div class="sidebar-title">F9SDMS</div>
@@ -39,10 +38,13 @@
                 Add Employee
             </a>
         }
-        <a href="#" class="navlink">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
-            Projects
-        </a>
+        @if (canViewTeamStatus)
+        {
+            <a href="/projects" class="navlink">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
+                Projects
+            </a>
+        }
 
         <div class="sidebar-spacer"></div>
 
@@ -64,15 +66,9 @@
                 <div class="welcome-date">@todayDate</div>
             </div>
             <div class="header-actions">
-                <button type="button" class="theme-toggle-btn" @onclick="ToggleTheme" aria-label="Toggle dark mode">
-                    @if (isDarkMode)
-                    {
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
-                    }
-                    else
-                    {
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-                    }
+                <button type="button" class="theme-toggle-btn" onclick="f9sdms.toggleTheme()" aria-label="Toggle dark mode">
+                    <span class="theme-icon-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg></span>
+                    <span class="theme-icon-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg></span>
                 </button>
                 <div class="avatar">@initials</div>
             </div>
@@ -80,6 +76,7 @@
 
         @if (!isAdmin)
         {
+            <div class="employee-grid @(myProjects.Count > 0 ? "has-projects" : "")">
             <div class="timer-card">
                 <div class="timer-status">
                     @if (clockInTime.HasValue)
@@ -117,7 +114,17 @@
                 <div class="status-row">
                     <div>
                         <div class="status-row-label">Current status</div>
-                        <div class="status-row-value">@currentStatus</div>
+                        @if (CurrentProject is not null)
+                        {
+                            <a href="/projects/@CurrentProject.Id" class="current-project-link">
+                                <span class="current-project-title">@CurrentProject.Code · @CurrentProject.Sample</span>
+                                <span class="current-project-meta">@(string.IsNullOrEmpty(CurrentProject.Meta) ? "" : CurrentProject.Meta + " · ")View details &rsaquo;</span>
+                            </a>
+                        }
+                        else
+                        {
+                            <div class="status-row-value">@currentStatus</div>
+                        }
                     </div>
                     <div class="status-dropdown-wrapper">
                         <button type="button" class="status-change-btn" @onclick="() => showStatusDropdown = !showStatusDropdown">
@@ -128,6 +135,21 @@
                         @if (showStatusDropdown)
                         {
                             <div class="status-dropdown">
+                                @if (myProjects.Count > 0)
+                                {
+                                    <div class="status-dropdown-section">My projects</div>
+                                    @foreach (var project in myProjects)
+                                    {
+                                        <div class="status-dropdown-item @(currentProjectId == project.Id ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => SetProjectStatus(project)">
+                                            @project.Code · @project.Sample
+                                        </div>
+                                    }
+                                    @if (!clockInTime.HasValue)
+                                    {
+                                        <div class="status-dropdown-note">Clock in to work on a project.</div>
+                                    }
+                                    <div class="status-dropdown-section">Other</div>
+                                }
                                 <div class="status-dropdown-item @(currentStatus == AvailableStatus ? "current" : "")" @onclick="() => SetStatus(AvailableStatus)">
                                     Available
                                     @if (currentStatus == AvailableStatus)
@@ -159,6 +181,30 @@
                     </div>
                 </div>
             </div>
+
+            @if (myProjects.Count > 0)
+            {
+                <div class="my-projects-column">
+                <h2 class="section-title">My Projects</h2>
+                <div class="my-projects">
+                    @foreach (var project in myProjects)
+                    {
+                        <a href="/projects/@project.Id" class="my-project-card @(currentProjectId == project.Id ? "current" : "")">
+                            <div class="my-project-top">
+                                <div>
+                                    <div class="my-project-code">@project.Code</div>
+                                    <div class="my-project-sample">@project.Sample</div>
+                                </div>
+                                <span class="project-status status-@ProjectOptions.StatusCss(project.Status)">@project.Status</span>
+                            </div>
+                            <div class="my-project-meta">@project.Meta</div>
+                            <div class="my-project-due @(project.DueSoon ? "due-soon" : "")">Due @project.DueDate.ToString("MMM d, yyyy")</div>
+                        </a>
+                    }
+                </div>
+                </div>
+            }
+            </div>
         }
 
         @if (canViewTeamStatus)
@@ -178,7 +224,14 @@
                                 <span class="status-dot-sm active-dot"></span>
                                 <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div>
                                 <span class="status-panel-name">@emp.FirstName @emp.LastName</span>
-                                <span class="status-pill @GetStatusClass(emp.Status)">@emp.Status</span>
+                                @if (emp.CurrentProjectId is int workingOn)
+                                {
+                                    <a href="/projects/@workingOn" class="status-pill status-project">@emp.Status</a>
+                                }
+                                else
+                                {
+                                    <span class="status-pill @GetStatusClass(emp.Status)">@emp.Status</span>
+                                }
                             </div>
                         }
                         @if (activeList.Count == 0)
@@ -321,13 +374,15 @@
     private bool showLogoutConfirm = false;
     private bool isAdmin = false;
     private bool isManager = false;
-    private bool isDarkMode = false;
     private int adminRefreshCounter = 0;
     private bool canViewTeamStatus = false;
     private HashSet<string> activeEmployeeIds = new();
 
     private string? currentUserId;
     private string currentStatus = "Available";
+    private int? currentProjectId;
+    private List<MyProject> myProjects = new();
+    private MyProject? CurrentProject => currentProjectId is int id ? myProjects.FirstOrDefault(p => p.Id == id) : null;
     private bool showStatusDropdown = false;
     private string customStatusInput = "";
 
@@ -390,6 +445,7 @@
             if (user is not null)
             {
                 currentStatus = string.IsNullOrWhiteSpace(user.CurrentStatus) ? "Available" : user.CurrentStatus;
+                currentProjectId = user.CurrentProjectId;
 
                 if (!string.IsNullOrWhiteSpace(user.FirstName))
                 {
@@ -426,6 +482,11 @@
                 }
             }
 
+            if (!isAdmin)
+            {
+                await LoadMyProjects();
+            }
+
             if (canViewTeamStatus)
             {
                 await LoadEmployees();
@@ -439,24 +500,6 @@
         _timer = new System.Threading.Timer(OnTimerElapsed, null, 1000, 1000);
     }
    
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            var saved = await JS.InvokeAsync<string?>("themeStorage.get");
-            if (saved == "dark")
-            {
-                isDarkMode = true;
-                StateHasChanged();
-            }
-        }
-    }
-
-    private async Task ToggleTheme()
-    {
-        isDarkMode = !isDarkMode;
-        await JS.InvokeVoidAsync("themeStorage.set", isDarkMode ? "dark" : "light");
-    }
     private void OnTimerElapsed(object? state)
     {
         if (_disposed) return;
@@ -496,6 +539,7 @@
                 {
                     heartbeatCounter = 0;
                     await SendHeartbeat();
+                    await LoadMyProjects();
                 }
             }
 
@@ -547,6 +591,16 @@
             clockInTime = null;
             elapsed = "00:00:00";
             sessionEnded = true;
+
+            if (currentUserId is not null)
+            {
+                await F9SDMS.Services.ProjectWork.StopAsync(db, currentUserId, autoClockOut ?? now, clearCurrentProject: true);
+                if (currentProjectId is not null)
+                {
+                    currentProjectId = null;
+                    currentStatus = AvailableStatus;
+                }
+            }
             return;
         }
 
@@ -569,6 +623,13 @@
             sessionEnded = false;
             heartbeatCounter = 0;
             UpdateElapsed();
+
+            var freshUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId);
+            if (freshUser is not null)
+            {
+                currentStatus = string.IsNullOrWhiteSpace(freshUser.CurrentStatus) ? AvailableStatus : freshUser.CurrentStatus;
+                currentProjectId = freshUser.CurrentProjectId;
+            }
 
             if (canViewTeamStatus)
             {
@@ -598,7 +659,7 @@
 
             var allUsers = await db.Users
                 .AsNoTracking()
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus })
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId })
                 .ToListAsync();
 
             var userRoles = await (from ur in db.UserRoles
@@ -618,7 +679,8 @@
                 LastName = u.LastName,
                 Email = u.Email ?? "",
                 Role = rolesByUser.TryGetValue(u.Id, out var role) && role is not null ? role : "Employee",
-                Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus
+                Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus,
+                CurrentProjectId = u.CurrentProjectId
             }).ToList();
 
             var activeIds = await db.AttendanceSessions
@@ -640,21 +702,102 @@
     private async Task SetStatus(string status)
     {
         currentStatus = status;
+        currentProjectId = null;
         showStatusDropdown = false;
 
         if (currentUserId is not null)
         {
-            var user = await UserManager.FindByIdAsync(currentUserId);
-            if (user is not null)
+            try
             {
-                user.CurrentStatus = status;
-                await UserManager.UpdateAsync(user);
+                await using var db = await DbFactory.CreateDbContextAsync();
+                var user = await db.Users.FirstOrDefaultAsync(u => u.Id == currentUserId);
+                if (user is not null)
+                {
+                    user.CurrentStatus = status;
+                    user.CurrentProjectId = null;
+                    await db.SaveChangesAsync();
+                }
+
+                // Leaving a project stops its timer.
+                await F9SDMS.Services.ProjectWork.StopAsync(db, currentUserId, Clock.Now, clearCurrentProject: false);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Could not update status.");
             }
         }
 
         if (canViewTeamStatus)
         {
             await LoadEmployees();
+        }
+    }
+
+    private async Task SetProjectStatus(MyProject project)
+    {
+        showStatusDropdown = false;
+
+        // Project time only counts while clocked in; picking the current project again does nothing.
+        if (currentUserId is null || !clockInTime.HasValue || currentProjectId == project.Id) return;
+
+        var status = $"{project.Code} · {project.Sample}";
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == currentUserId);
+            if (user is not null)
+            {
+                user.CurrentStatus = status;
+                user.CurrentProjectId = project.Id;
+                await db.SaveChangesAsync();
+            }
+
+            await F9SDMS.Services.ProjectWork.StartAsync(db, currentUserId, project.Id, Clock.Now);
+
+            currentStatus = status;
+            currentProjectId = project.Id;
+            await LoadMyProjects();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not set project status.");
+        }
+
+        if (canViewTeamStatus)
+        {
+            await LoadEmployees();
+        }
+    }
+
+    private async Task LoadMyProjects()
+    {
+        var userId = currentUserId;
+        if (userId is null || isAdmin) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var today = Clock.Now.Date;
+            var projects = await db.Projects
+                .AsNoTracking()
+                .Where(p => p.Status != ProjectOptions.StatusCompleted && p.Assignments.Any(a => a.EmployeeId == userId))
+                .OrderBy(p => p.DueDate)
+                .ToListAsync();
+
+            myProjects = projects.Select(p => new MyProject
+            {
+                Id = p.Id,
+                Code = p.Code,
+                Sample = p.Sample,
+                Status = p.Status,
+                DueDate = p.DueDate,
+                DueSoon = p.DueDate.Date <= today.AddDays(3),
+                Meta = string.Join(" · ", new[] { p.Category, p.Lod }.Where(x => !string.IsNullOrWhiteSpace(x)))
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not load assigned projects.");
         }
     }
 
@@ -713,6 +856,10 @@
                     return;
                 }
             }
+
+            // The circuit's context may hold an old copy of this user; reload it so saving
+            // doesn't overwrite newer values (e.g. their current status or project).
+            await CircuitDb.Entry(editingEmployee).ReloadAsync();
 
             editingEmployee.FirstName = editFirstName;
             editingEmployee.LastName = editLastName;
@@ -835,6 +982,18 @@
         public string Email { get; set; } = "";
         public string Role { get; set; } = "";
         public string Status { get; set; } = "Available";
+        public int? CurrentProjectId { get; set; }
+    }
+
+    private class MyProject
+    {
+        public int Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Sample { get; set; } = "";
+        public string Status { get; set; } = "";
+        public DateTime DueDate { get; set; }
+        public bool DueSoon { get; set; }
+        public string Meta { get; set; } = "";
     }
 
     private string GetInitials(string firstName, string lastName)

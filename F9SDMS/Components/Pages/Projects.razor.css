@@ -1,0 +1,532 @@
+﻿/* Light values first; ".dark-mode" (set by AppShell) overrides at the bottom. */
+
+.primary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border-radius: 8px;
+    border: none;
+    background: #098993;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+    .primary-btn:hover {
+        background: #076e76;
+    }
+
+.summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.summary-chip {
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e5e9eb;
+    font-size: 13px;
+    color: #606060;
+}
+
+.summary-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0c1a27;
+    margin-right: 6px;
+}
+
+.summary-warn {
+    color: #a0701a;
+}
+
+.summary-alert {
+    color: #b3413a;
+}
+
+.table-card {
+    background: #ffffff;
+    border: 1px solid #e5e9eb;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 14px 18px;
+    border-bottom: 1px solid #e5e9eb;
+}
+
+.filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+    .filter label {
+        font-size: 13px;
+        color: #606060;
+        font-weight: 600;
+    }
+
+.filter-input {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid #dde3e5;
+    background: #ffffff;
+    color: #0c1a27;
+    font-family: inherit;
+    font-size: 13px;
+}
+
+input.filter-input {
+    width: 220px;
+}
+
+.table-scroll {
+    overflow-x: auto;
+}
+
+.projects-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+    .projects-table th {
+        text-align: left;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #606060;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e5e9eb;
+        white-space: nowrap;
+    }
+
+    .projects-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f0f2f3;
+        color: #0c1a27;
+        vertical-align: middle;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .projects-table tbody tr:hover {
+        background: #f8fafa;
+    }
+
+.muted {
+    color: #606060 !important;
+    font-weight: 600;
+}
+
+.sub {
+    font-size: 12px;
+    color: #606060;
+    margin-top: 2px;
+}
+
+.sample-link {
+    color: #098993;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+    .sample-link:hover {
+        text-decoration: underline;
+    }
+
+.lod-badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 5px;
+    border: 1px solid #dde3e5;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.people-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.avatar-stack {
+    display: flex;
+}
+
+.mini-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #098993;
+    color: #ffffff;
+    border: 2px solid #ffffff;
+    margin-right: -8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 700;
+}
+
+.people-cell span:last-child {
+    margin-left: 8px;
+}
+
+.assign-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #098993;
+    background: transparent;
+    color: #098993;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.edit-btn {
+    background: none;
+    border: 1px solid #dde3e5;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0c1a27;
+    cursor: pointer;
+}
+
+.due-soon {
+    color: #b3413a !important;
+    font-weight: 700;
+}
+
+.project-status {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.status-unassigned { background: #eceff1; color: #4a5a66; }
+.status-assigned { background: #fbf0d6; color: #7a5510; }
+.status-in-progress { background: #dff2f3; color: #066b73; }
+.status-for-checking { background: #e2ecfb; color: #2a5ea8; }
+.status-completed { background: #e3f4ea; color: #1d6b3f; }
+
+.empty-state {
+    padding: 32px 18px;
+    text-align: center;
+    font-size: 14px;
+    color: #606060;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(12, 26, 39, 0.6);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 16px;
+    overflow-y: auto;
+    z-index: 100;
+}
+
+.project-modal {
+    width: 100%;
+    max-width: 720px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 30px 60px -15px rgba(0,0,0,0.5);
+    color: #0c1a27;
+}
+
+.project-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: #098993;
+    border-radius: 12px 12px 0 0;
+    color: #ffffff;
+}
+
+    .project-modal-header h2 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #ffffff;
+    display: flex;
+    padding: 4px;
+    cursor: pointer;
+}
+
+.project-modal-body {
+    padding: 20px 24px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 16px;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+    .form-field label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #3d4f5c;
+    }
+
+.req {
+    color: #b3413a;
+}
+
+.form-input {
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid #d3dade;
+    background: #f6f8f9;
+    font-family: inherit;
+    font-size: 14px;
+    color: #0c1a27;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+    .form-input:focus,
+    .chip-select:focus,
+    .filter-input:focus {
+        outline: none;
+        border-color: #098993;
+        box-shadow: 0 0 0 3px rgba(9,137,147,0.2);
+    }
+
+textarea.form-input {
+    resize: vertical;
+}
+
+.chip-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid #d3dade;
+    background: #f6f8f9;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px 4px 4px;
+    border-radius: 999px;
+    background: #e1f2f3;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.chip-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #098993;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chip-remove {
+    border: none;
+    background: none;
+    padding: 0;
+    display: flex;
+    color: #3d4f5c;
+    cursor: pointer;
+}
+
+.chip-select {
+    flex-grow: 1;
+    min-width: 200px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    color: #3d4f5c;
+    padding: 4px;
+}
+
+.hint {
+    font-size: 12px;
+    color: #5b6b76;
+}
+
+.form-error {
+    font-size: 13px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    background: #fbeceb;
+    color: #b3413a;
+}
+
+.project-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px 20px;
+}
+
+.modal-btn-cancel {
+    background: none;
+    border: 1px solid #dde3e5;
+    color: #0c1a27;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.modal-btn-confirm {
+    background: #098993;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+    .modal-btn-confirm:disabled {
+        opacity: 0.7;
+        cursor: default;
+    }
+
+@media (max-width: 720px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Dark mode (".dark-mode" is on AppShell's root) */
+.dark-mode .summary-chip,
+.dark-mode .table-card {
+    background: #131f2e;
+    border-color: #223244;
+    color: #8b98a3;
+}
+
+.dark-mode .summary-value {
+    color: #e8edf0;
+}
+
+.dark-mode .summary-warn { color: #e6b95c; }
+.dark-mode .summary-alert { color: #f0928a; }
+
+.dark-mode .table-toolbar {
+    border-bottom-color: #223244;
+}
+
+.dark-mode .filter label,
+.dark-mode .muted,
+.dark-mode .sub,
+.dark-mode .empty-state {
+    color: #8b98a3 !important;
+}
+
+.dark-mode .filter-input {
+    background: #0f1c29;
+    border-color: #2c4356;
+    color: #e8edf0;
+}
+
+.dark-mode .projects-table th {
+    background: #182530;
+    color: #8b98a3;
+    border-bottom-color: #223244;
+}
+
+.dark-mode .projects-table td {
+    color: #e8edf0;
+    border-bottom-color: #223244;
+}
+
+.dark-mode .projects-table tbody tr:hover {
+    background: #182530;
+}
+
+.dark-mode .sample-link,
+.dark-mode .assign-btn {
+    color: #5fd3da;
+}
+
+.dark-mode .lod-badge,
+.dark-mode .edit-btn {
+    border-color: #2c4356;
+    color: #e8edf0;
+}
+
+.dark-mode .mini-avatar {
+    border-color: #131f2e;
+}
+
+.dark-mode .due-soon {
+    color: #f0928a !important;
+}
+
+.dark-mode .status-unassigned { background: #2a3a47; color: #c6d3dc; }
+.dark-mode .status-assigned { background: #4a3a14; color: #f0c96a; }
+.dark-mode .status-in-progress { background: #0c4a50; color: #5fd0d8; }
+.dark-mode .status-for-checking { background: #1c3560; color: #8db8f2; }
+.dark-mode .status-completed { background: #16452e; color: #6fd39b; }

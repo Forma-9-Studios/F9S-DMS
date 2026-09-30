@@ -1,0 +1,486 @@
+﻿@page "/projects"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin,Manager")]
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAppClock Clock
+@inject ILogger<Projects> Logger
+
+<PageTitle>Projects</PageTitle>
+
+<AppShell Active="projects" Title="Projects" Subtitle="Create BIM projects and assign them to your engineers and architects.">
+    <HeaderActions>
+        <button type="button" class="primary-btn" @onclick="OpenAdd">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Add Project
+        </button>
+    </HeaderActions>
+    <ChildContent>
+        <div class="summary-row">
+            <div class="summary-chip"><span class="summary-value">@ActiveCount</span>Active</div>
+            <div class="summary-chip"><span class="summary-value summary-warn">@UnassignedCount</span>Unassigned</div>
+            <div class="summary-chip"><span class="summary-value summary-alert">@DueSoonCount</span>Due within 7 days</div>
+        </div>
+
+        <div class="table-card">
+            <div class="table-toolbar">
+                <div class="filter">
+                    <label for="projectSearch">Search</label>
+                    <input id="projectSearch" type="search" class="filter-input" placeholder="Sample, category, engineer…" @bind="search" @bind:event="oninput" />
+                </div>
+                <div class="filter">
+                    <label for="lodFilter">LOD</label>
+                    <select id="lodFilter" class="filter-input" @bind="lodFilter">
+                        <option value="">All</option>
+                        @foreach (var lod in ProjectOptions.LodOptions)
+                        {
+                            <option value="@lod">@lod</option>
+                        }
+                    </select>
+                </div>
+                <div class="filter">
+                    <label for="statusFilter">Status</label>
+                    <select id="statusFilter" class="filter-input" @bind="statusFilter">
+                        <option value="">All</option>
+                        @foreach (var status in ProjectOptions.Statuses)
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-scroll">
+                <table class="projects-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Sample</th>
+                            <th>Category</th>
+                            <th>LOD</th>
+                            <th>BIM Engineer / Architect</th>
+                            <th>Due Date</th>
+                            <th>Status</th>
+                            <th><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Filtered)
+                        {
+                            var assignees = p.Assignments
+                                .Select(a => peopleById.TryGetValue(a.EmployeeId, out var person) ? person : null)
+                                .Where(person => person is not null)
+                                .Select(person => person!)
+                                .ToList();
+                            <tr>
+                                <td class="muted">@p.Code</td>
+                                <td><a href="/projects/@p.Id" class="sample-link">@p.Sample</a></td>
+                                <td>@(p.Category ?? "—")</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(p.Lod))
+                                    {
+                                        <span class="lod-badge">@p.Lod</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (assignees.Count == 0)
+                                    {
+                                        <button type="button" class="assign-btn" @onclick="() => OpenEdit(p)">+ Assign</button>
+                                    }
+                                    else
+                                    {
+                                        <div class="people-cell">
+                                            <div class="avatar-stack">
+                                                @foreach (var person in assignees.Take(3))
+                                                {
+                                                    <span class="mini-avatar" title="@person.Name">@person.Initials</span>
+                                                }
+                                            </div>
+                                            <span>@(assignees.Count == 1 ? assignees[0].Name : $"{assignees.Count} people")</span>
+                                        </div>
+                                    }
+                                </td>
+                                <td class="@(IsDueSoon(p) ? "due-soon" : "")">@p.DueDate.ToString("MMM d, yyyy")</td>
+                                <td><span class="project-status status-@ProjectOptions.StatusCss(p.Status)">@p.Status</span></td>
+                                <td><button type="button" class="edit-btn" @onclick="() => OpenEdit(p)">Edit</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (!loaded)
+            {
+                <div class="empty-state">Loading projects…</div>
+            }
+            else if (projects.Count == 0)
+            {
+                <div class="empty-state">No projects yet. Click <strong>Add Project</strong> to create the first one.</div>
+            }
+            else if (!Filtered.Any())
+            {
+                <div class="empty-state">No projects match your filters.</div>
+            }
+        </div>
+
+        @if (editor is not null)
+        {
+            <div class="modal-overlay">
+                <div class="project-modal" role="dialog" aria-labelledby="projectModalTitle">
+                    <div class="project-modal-header">
+                        <h2 id="projectModalTitle">@(editor.Id == 0 ? "Add Project" : $"Edit {Project.FormatCode(editor.Id)}")</h2>
+                        <button type="button" class="close-btn" aria-label="Close" @onclick="CloseEditor">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+
+                    <div class="project-modal-body">
+                        <div class="form-grid">
+                            <div class="form-field">
+                                <label for="pSample">Sample (project name) <span class="req">*</span></label>
+                                <input id="pSample" class="form-input" maxlength="200" @bind="editor.Sample" />
+                            </div>
+                            <div class="form-field">
+                                <label for="pLod">LOD (Level of Development)</label>
+                                <select id="pLod" class="form-input" @bind="editor.Lod">
+                                    <option value="">Select LOD</option>
+                                    @foreach (var lod in ProjectOptions.LodOptions)
+                                    {
+                                        <option value="@lod">@lod</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label for="pCategory">Category</label>
+                                <select id="pCategory" class="form-input" @bind="editor.Category">
+                                    <option value="">Select category</option>
+                                    @foreach (var category in ProjectOptions.CategoryOptions)
+                                    {
+                                        <option value="@category">@category</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label for="pDue">Due Date <span class="req">*</span></label>
+                                <input id="pDue" type="date" class="form-input" @bind="editor.DueDate" />
+                            </div>
+                            @if (editor.Id != 0)
+                            {
+                                <div class="form-field">
+                                    <label for="pStatus">Status</label>
+                                    <select id="pStatus" class="form-input" @bind="editor.Status">
+                                        @foreach (var status in ProjectOptions.Statuses)
+                                        {
+                                            <option value="@status">@status</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="form-field">
+                            <label for="pAssignee">BIM Engineer / Architect</label>
+                            <div class="chip-input">
+                                @foreach (var id in editor.AssigneeIds.ToList())
+                                {
+                                    if (!peopleById.TryGetValue(id, out var person))
+                                    {
+                                        continue;
+                                    }
+                                    <span class="chip">
+                                        <span class="chip-avatar">@person.Initials</span>
+                                        @person.Name
+                                        <button type="button" class="chip-remove" aria-label="Remove @person.Name" @onclick="() => RemoveAssignee(id)">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="14" height="14"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                                        </button>
+                                    </span>
+                                }
+                                <select id="pAssignee" class="chip-select" @key="assigneePickerKey" @onchange="AddAssignee">
+                                    <option value="">Add engineer or architect…</option>
+                                    @foreach (var person in assignable.Where(x => !editor.AssigneeIds.Contains(x.Id)))
+                                    {
+                                        <option value="@person.Id">@person.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="hint">Assigned people see this project in their status and on their dashboard. Leave empty to assign later.</div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="pNotes">Notes</label>
+                            <textarea id="pNotes" class="form-input" rows="3" maxlength="4000" placeholder="Scope, model references, client requirements…" @bind="editor.Notes"></textarea>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(formError))
+                        {
+                            <div class="form-error" role="alert">@formError</div>
+                        }
+                    </div>
+
+                    <div class="project-modal-footer">
+                        <button type="button" class="modal-btn-cancel" @onclick="CloseEditor">Cancel</button>
+                        <button type="button" class="modal-btn-confirm" @onclick="SaveProject" disabled="@isSaving">
+                            @(isSaving ? "Saving..." : editor.Id == 0 ? "Save & Assign" : "Save Changes")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private List<Project> projects = new();
+    private Dictionary<string, Person> peopleById = new();
+    private List<Person> assignable = new();
+    private bool loaded;
+
+    private string search = "";
+    private string lodFilter = "";
+    private string statusFilter = "";
+
+    private ProjectEditor? editor;
+
+    // Changing this rebuilds the "Add engineer or architect" dropdown so it always
+    // goes back to its placeholder after someone is added or removed.
+    private int assigneePickerKey;
+    private string? formError;
+    private bool isSaving;
+    private string? currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        currentUserId = UserManager.GetUserId(authState.User);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var adminIds = await (from ur in db.UserRoles
+                              join r in db.Roles on ur.RoleId equals r.Id
+                              where r.Name == "Admin"
+                              select ur.UserId).ToListAsync();
+
+        var users = await db.Users
+            .AsNoTracking()
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .ToListAsync();
+
+        peopleById = users.ToDictionary(
+            u => u.Id,
+            u => new Person(u.Id, DisplayName(u.FirstName, u.LastName, u.Email), Initials(u.FirstName, u.LastName, u.Email)));
+
+        // Admins aren't tracked, so they can't be assigned.
+        assignable = peopleById.Values
+            .Where(p => !adminIds.Contains(p.Id))
+            .OrderBy(p => p.Name)
+            .ToList();
+
+        projects = await db.Projects
+            .AsNoTracking()
+            .Include(p => p.Assignments)
+            .OrderByDescending(p => p.Id)
+            .ToListAsync();
+
+        loaded = true;
+    }
+
+    private IEnumerable<Project> Filtered => projects.Where(p =>
+        (lodFilter == "" || p.Lod == lodFilter) &&
+        (statusFilter == "" || p.Status == statusFilter) &&
+        (string.IsNullOrWhiteSpace(search) || Matches(p, search.Trim())));
+
+    private bool Matches(Project p, string term)
+    {
+        bool Has(string? value) => value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+
+        return Has(p.Code) || Has(p.Sample) || Has(p.Category) || Has(p.Lod)
+            || p.Assignments.Any(a => peopleById.TryGetValue(a.EmployeeId, out var person) && Has(person.Name));
+    }
+
+    private int ActiveCount => projects.Count(p => p.Status != ProjectOptions.StatusCompleted);
+    private int UnassignedCount => projects.Count(p => p.Status == ProjectOptions.StatusUnassigned);
+    private int DueSoonCount => projects.Count(IsDueSoon);
+
+    private bool IsDueSoon(Project p) =>
+        p.Status != ProjectOptions.StatusCompleted && p.DueDate.Date <= Clock.Now.Date.AddDays(7);
+
+    private void OpenAdd()
+    {
+        formError = null;
+        editor = new ProjectEditor { DueDate = Clock.Now.Date.AddDays(14) };
+    }
+
+    private void OpenEdit(Project p)
+    {
+        formError = null;
+        editor = new ProjectEditor
+        {
+            Id = p.Id,
+            Sample = p.Sample,
+            Lod = p.Lod ?? "",
+            Category = p.Category ?? "",
+            DueDate = p.DueDate,
+            Notes = p.Notes ?? "",
+            Status = p.Status,
+            AssigneeIds = p.Assignments.Select(a => a.EmployeeId).Distinct().ToList()
+        };
+    }
+
+    private void CloseEditor()
+    {
+        editor = null;
+        formError = null;
+    }
+
+    private void AddAssignee(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        if (editor is not null && !string.IsNullOrEmpty(id) && !editor.AssigneeIds.Contains(id))
+        {
+            editor.AssigneeIds.Add(id);
+        }
+
+        assigneePickerKey++;
+    }
+
+    private void RemoveAssignee(string id)
+    {
+        editor?.AssigneeIds.Remove(id);
+        assigneePickerKey++;
+    }
+
+    private async Task SaveProject()
+    {
+        if (editor is null || isSaving) return;
+
+        formError = null;
+        if (string.IsNullOrWhiteSpace(editor.Sample) || editor.DueDate is null)
+        {
+            formError = "Please fill in Sample and Due Date.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var now = Clock.Now;
+
+            Project project;
+            if (editor.Id == 0)
+            {
+                project = new Project { CreatedAt = now, CreatedById = currentUserId };
+                db.Projects.Add(project);
+            }
+            else
+            {
+                var existing = await db.Projects
+                    .Include(p => p.Assignments)
+                    .FirstOrDefaultAsync(p => p.Id == editor.Id);
+
+                if (existing is null)
+                {
+                    formError = "This project no longer exists. Close this window and refresh the page.";
+                    return;
+                }
+
+                project = existing;
+            }
+
+            project.Sample = editor.Sample.Trim();
+            project.Lod = string.IsNullOrWhiteSpace(editor.Lod) ? null : editor.Lod;
+            project.Category = string.IsNullOrWhiteSpace(editor.Category) ? null : editor.Category;
+            project.DueDate = editor.DueDate.Value.Date;
+            project.Notes = string.IsNullOrWhiteSpace(editor.Notes) ? null : editor.Notes.Trim();
+
+            // Sync assignments.
+            var selected = editor.AssigneeIds.Distinct().ToList();
+            var removed = project.Assignments.Where(a => !selected.Contains(a.EmployeeId)).ToList();
+            foreach (var assignment in removed)
+            {
+                project.Assignments.Remove(assignment);
+            }
+            foreach (var id in selected.Where(id => project.Assignments.All(a => a.EmployeeId != id)))
+            {
+                project.Assignments.Add(new ProjectAssignment { EmployeeId = id });
+            }
+
+            // Status: new projects start as Assigned; nobody assigned means Unassigned.
+            var chosenStatus = editor.Id == 0 ? ProjectOptions.StatusAssigned : editor.Status;
+            if (selected.Count == 0)
+            {
+                project.Status = ProjectOptions.StatusUnassigned;
+            }
+            else if (chosenStatus == ProjectOptions.StatusUnassigned)
+            {
+                project.Status = ProjectOptions.StatusAssigned;
+            }
+            else
+            {
+                project.Status = chosenStatus;
+            }
+
+            await db.SaveChangesAsync();
+
+            // Anyone taken off the project stops working on it.
+            foreach (var assignment in removed)
+            {
+                var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == assignment.EmployeeId);
+                if (user?.CurrentProjectId == project.Id)
+                {
+                    await ProjectWork.StopAsync(db, assignment.EmployeeId, now, clearCurrentProject: true);
+                }
+            }
+
+            editor = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving project failed.");
+            formError = "Couldn't save the project. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static string DisplayName(string first, string last, string? email)
+    {
+        var name = $"{first} {last}".Trim();
+        return string.IsNullOrEmpty(name) ? (email ?? "Unknown") : name;
+    }
+
+    private static string Initials(string first, string last, string? email)
+    {
+        var f = string.IsNullOrWhiteSpace(first) ? (email ?? "?")[..1] : first[..1];
+        var l = string.IsNullOrWhiteSpace(last) ? "" : last[..1];
+        return (f + l).ToUpper();
+    }
+
+    private sealed record Person(string Id, string Name, string Initials);
+
+    private sealed class ProjectEditor
+    {
+        public int Id { get; set; }
+        public string Sample { get; set; } = "";
+        public string Lod { get; set; } = "";
+        public string Category { get; set; } = "";
+        public DateTime? DueDate { get; set; }
+        public string Notes { get; set; } = "";
+        public string Status { get; set; } = ProjectOptions.StatusAssigned;
+        public List<string> AssigneeIds { get; set; } = new();
+    }
+}

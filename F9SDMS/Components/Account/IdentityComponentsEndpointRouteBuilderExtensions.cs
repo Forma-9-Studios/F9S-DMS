@@ -78,6 +78,9 @@ namespace Microsoft.AspNetCore.Routing
                     {
                         await dbContext.SaveChangesAsync();
                     }
+
+                    // Stop any project time and reset a project status.
+                    await ProjectWork.StopAsync(dbContext, userId, clock.Now, clearCurrentProject: true);
                 }
 
                 await signInManager.SignOutAsync();

@@ -1,0 +1,296 @@
+﻿@page "/projects/{ProjectId:int}"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAppClock Clock
+@inject ILogger<ProjectDetails> Logger
+
+<PageTitle>@(project is null ? "Project" : $"{project.Code} · {project.Sample}")</PageTitle>
+
+<AppShell Active="@(isManagerView ? "projects" : "dashboard")"
+          Title="@(project is null ? "Project" : $"{project.Code} · {project.Sample}")"
+          Subtitle="@(project is null ? null : "Project details and time log")">
+    <ChildContent>
+        <a href="@(isManagerView ? "/projects" : "/")" class="back-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6" /></svg>
+            @(isManagerView ? "Back to projects" : "Back to dashboard")
+        </a>
+
+        @if (!loaded)
+        {
+            <div class="info-card">Loading project…</div>
+        }
+        else if (project is null)
+        {
+            <div class="info-card">This project doesn't exist or was removed.</div>
+        }
+        else if (!canView)
+        {
+            <div class="info-card">You don't have access to this project. Ask your manager to assign you to it.</div>
+        }
+        else
+        {
+            <div class="details-card">
+                <div class="details-col">
+                    <div class="detail-row"><span class="detail-label">ID:</span><span>@project.Code</span></div>
+                    <div class="detail-row"><span class="detail-label">Sample:</span><span>@project.Sample</span></div>
+                    <div class="detail-row"><span class="detail-label">LOD:</span><span>@(project.Lod ?? "—")</span></div>
+                    <div class="detail-row"><span class="detail-label">Category:</span><span>@(project.Category ?? "—")</span></div>
+                    <div class="detail-row"><span class="detail-label">Due Date:</span><span class="@(IsOverdue ? "overdue" : "")">@project.DueDate.ToString("MMMM d, yyyy")</span></div>
+                </div>
+                <div class="details-col">
+                    <div class="detail-row">
+                        <span class="detail-label">Status:</span>
+                        <span class="project-status status-@ProjectOptions.StatusCss(project.Status)">@project.Status</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">BIM Engineer / Architect:</span>
+                        <span class="people">
+                            @if (assigneeNames.Count == 0)
+                            {
+                                <span>Not assigned yet</span>
+                            }
+                            @foreach (var name in assigneeNames)
+                            {
+                                <span class="person-chip">@name</span>
+                            }
+                        </span>
+                    </div>
+                    <div class="detail-row"><span class="detail-label">Assigned By:</span><span>@(createdByName ?? "—")</span></div>
+                    <div class="detail-row"><span class="detail-label">Created At:</span><span>@project.CreatedAt.ToString("MMMM d, yyyy")</span></div>
+
+                    <label for="projectNotes" class="notes-label">Notes</label>
+                    <textarea id="projectNotes" class="notes-input" rows="4" maxlength="4000" @bind="notes" @bind:event="oninput"></textarea>
+                    <div class="notes-actions">
+                        @if (!string.IsNullOrEmpty(saveMessage))
+                        {
+                            <span class="save-message">@saveMessage</span>
+                        }
+                        @if (canSubmitForChecking)
+                        {
+                            <button type="button" class="secondary-btn" @onclick="SubmitForChecking" disabled="@isSaving">Submit for checking</button>
+                        }
+                        <button type="button" class="primary-btn" @onclick="SaveNotes" disabled="@isSaving">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /></svg>
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="log-card">
+                <div class="log-header">
+                    <h2>Time log</h2>
+                    <span class="log-hint">Time is logged while this project is someone's current status.</span>
+                </div>
+                <div class="table-scroll">
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>BIM Engineer / Architect</th>
+                                <th>Date</th>
+                                <th>Start</th>
+                                <th>Stop</th>
+                                <th class="num">Hours</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in entries)
+                            {
+                                <tr>
+                                    <td>@entry.Name</td>
+                                    <td>@entry.Start.ToString("MMM d, yyyy")</td>
+                                    <td>@entry.Start.ToString("hh:mm:ss tt")</td>
+                                    <td>
+                                        @if (entry.End is DateTime end)
+                                        {
+                                            @end.ToString("hh:mm:ss tt")
+                                        }
+                                        else
+                                        {
+                                            <span class="running">Working now</span>
+                                        }
+                                    </td>
+                                    <td class="num">@FormatDuration(entry.Duration)</td>
+                                </tr>
+                            }
+                        </tbody>
+                        @if (entries.Count > 0)
+                        {
+                            <tfoot>
+                                <tr>
+                                    <td colspan="4" class="num">Total hours:</td>
+                                    <td class="num">@FormatDuration(TotalDuration)</td>
+                                </tr>
+                            </tfoot>
+                        }
+                    </table>
+                </div>
+                @if (entries.Count == 0)
+                {
+                    <div class="empty-state">No time logged yet.</div>
+                }
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private Project? project;
+    private bool loaded;
+    private bool canView;
+    private bool isManagerView;
+    private bool isAssigned;
+    private string? currentUserId;
+    private List<string> assigneeNames = new();
+    private string? createdByName;
+    private List<LogRow> entries = new();
+
+    private string notes = "";
+    private string? saveMessage;
+    private bool isSaving;
+
+    private bool IsOverdue => project is not null
+        && project.Status != ProjectOptions.StatusCompleted
+        && project.DueDate.Date < Clock.Now.Date;
+
+    private bool canSubmitForChecking => isAssigned && project is not null
+        && (project.Status == ProjectOptions.StatusAssigned || project.Status == ProjectOptions.StatusInProgress);
+
+    private TimeSpan TotalDuration => entries.Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        currentUserId = UserManager.GetUserId(authState.User);
+        isManagerView = authState.User.IsInRole("Admin") || authState.User.IsInRole("Manager");
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        project = await db.Projects
+            .AsNoTracking()
+            .Include(p => p.Assignments)
+            .FirstOrDefaultAsync(p => p.Id == ProjectId);
+
+        if (project is null)
+        {
+            loaded = true;
+            return;
+        }
+
+        isAssigned = currentUserId is not null && project.Assignments.Any(a => a.EmployeeId == currentUserId);
+        canView = isManagerView || isAssigned;
+        notes = project.Notes ?? "";
+
+        var users = await db.Users
+            .AsNoTracking()
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .ToListAsync();
+        var names = users.ToDictionary(u => u.Id, u =>
+        {
+            var name = $"{u.FirstName} {u.LastName}".Trim();
+            return string.IsNullOrEmpty(name) ? (u.Email ?? "Unknown") : name;
+        });
+
+        assigneeNames = project.Assignments
+            .Select(a => names.TryGetValue(a.EmployeeId, out var n) ? n : "Unknown")
+            .OrderBy(n => n)
+            .ToList();
+
+        createdByName = project.CreatedById is not null && names.TryGetValue(project.CreatedById, out var creator) ? creator : null;
+
+        var now = Clock.Now;
+        var timeEntries = await db.ProjectTimeEntries
+            .AsNoTracking()
+            .Where(t => t.ProjectId == ProjectId)
+            .OrderByDescending(t => t.StartTime)
+            .ToListAsync();
+
+        entries = timeEntries.Select(t => new LogRow(
+            names.TryGetValue(t.EmployeeId, out var n) ? n : "Unknown",
+            t.StartTime,
+            t.EndTime,
+            (t.EndTime ?? now) - t.StartTime)).ToList();
+
+        loaded = true;
+    }
+
+    private async Task SaveNotes()
+    {
+        if (project is null || !canView || isSaving) return;
+
+        isSaving = true;
+        saveMessage = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var tracked = await db.Projects.FirstOrDefaultAsync(p => p.Id == ProjectId);
+            if (tracked is not null)
+            {
+                tracked.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+                await db.SaveChangesAsync();
+                saveMessage = "Saved";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving project notes failed.");
+            saveMessage = "Couldn't save. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task SubmitForChecking()
+    {
+        if (project is null || !canSubmitForChecking || isSaving) return;
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var tracked = await db.Projects.FirstOrDefaultAsync(p => p.Id == ProjectId);
+            if (tracked is not null)
+            {
+                tracked.Status = ProjectOptions.StatusForChecking;
+                await db.SaveChangesAsync();
+            }
+            await LoadAsync();
+            saveMessage = "Submitted for checking";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Submitting project for checking failed.");
+            saveMessage = "Couldn't update the status. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static string FormatDuration(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        return $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}";
+    }
+
+    private sealed record LogRow(string Name, DateTime Start, DateTime? End, TimeSpan Duration);
+}

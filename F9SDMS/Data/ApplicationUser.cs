@@ -8,5 +8,8 @@ namespace F9SDMS.Data
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
         public string CurrentStatus { get; set; } = "Available";
+
+        /// <summary>The project the employee is working on right now (their status), if any.</summary>
+        public int? CurrentProjectId { get; set; }
     }
 }

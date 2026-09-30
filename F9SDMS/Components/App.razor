@@ -1,22 +1,69 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="@(IsDarkTheme ? "dark-mode" : null)">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" />
+    @* Keeps the loader / reconnect elements hidden even before app.css has loaded. *@
+    <style>
+        .page-loader { position: fixed; opacity: 0; pointer-events: none; }
+        .reconnect-overlay { display: none; }
+        .theme-icon-sun { display: none; }
+    </style>
     <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="F9SDMS.styles.css" />
-    <link rel="stylesheet" href="css/shared.css" />
+    <link rel="stylesheet" href="app.css?v=@AssetVersion" />
+    <link rel="stylesheet" href="F9SDMS.styles.css?v=@AssetVersion" />
+    <link rel="stylesheet" href="css/shared.css?v=@AssetVersion" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet />
 </head>
 
 <body>
     <Routes />
-    <script src="js/app.js"></script>
+
+    @* Small loader shown only when a page takes a moment to load (see app.js). *@
+    <div id="page-loader" class="page-loader" aria-hidden="true">
+        <div class="page-loader-bar"></div>
+        <div class="page-loader-card">
+            <span class="page-loader-spinner"></span>
+            <span>Loading…</span>
+        </div>
+    </div>
+
+    @* Blazor shows this while the live connection to the server is being restored. *@
+    <div id="components-reconnect-modal" class="reconnect-overlay" role="status" aria-live="polite">
+        <div class="reconnect-card">
+            <div class="reconnect-show-state">
+                <span class="page-loader-spinner"></span>
+                <span>Reconnecting…</span>
+            </div>
+            <div class="reconnect-failed-state">
+                <span>Connection lost.</span>
+                <button type="button" class="reconnect-btn" onclick="location.reload()">Reload</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=@AssetVersion"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    // Read the theme cookie on the server so the page is drawn in the right theme
+    // from the first frame (no light "flash" before dark mode kicks in).
+    // Changes whenever the app is rebuilt, so browsers fetch the new app.css / app.js
+    // instead of an old cached copy (no Ctrl+F5 needed after an update).
+    private static readonly string AssetVersion =
+        System.IO.File.GetLastWriteTimeUtc(typeof(App).Assembly.Location).Ticks.ToString();
+
+    private bool IsDarkTheme => HttpContext?.Request.Cookies["f9sdms-theme"] == "dark";
+}

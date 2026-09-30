@@ -1,6 +1,8 @@
 ﻿.dashboard-page {
     display: flex;
-    min-height: 100vh;
+    /* Fixed-height shell: the sidebar stays put and only the main area scrolls. */
+    height: 100vh;
+    overflow: hidden;
     font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: #f4f6f7;
 }
@@ -8,6 +10,9 @@
 .sidebar {
     width: 240px;
     flex: none;
+    height: 100vh;
+    box-sizing: border-box;
+    overflow-y: auto;
     background: #0c1a27;
     display: flex;
     flex-direction: column;
@@ -68,6 +73,10 @@
 
 .main-content {
     flex-grow: 1;
+    min-width: 0;
+    height: 100vh;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 40px 48px;
     box-sizing: border-box;
 }
@@ -523,117 +532,117 @@
 
 /* Dark mode overrides */
 
-.dashboard-page.dark-mode {
+.dark-mode .dashboard-page {
     background: #0a1420;
 }
 
-    .dashboard-page.dark-mode .welcome-text,
-    .dashboard-page.dark-mode .section-title,
-    .dashboard-page.dark-mode .employees-header h2,
-    .dashboard-page.dark-mode .modal-title {
+    .dark-mode .dashboard-page .welcome-text,
+    .dark-mode .dashboard-page .section-title,
+    .dark-mode .dashboard-page .employees-header h2,
+    .dark-mode .dashboard-page .modal-title {
         color: #e8edf0;
     }
 
-    .dashboard-page.dark-mode .welcome-date,
-    .dashboard-page.dark-mode .status-panel-empty,
-    .dashboard-page.dark-mode .modal-body,
-    .dashboard-page.dark-mode .edit-card label {
+    .dark-mode .dashboard-page .welcome-date,
+    .dark-mode .dashboard-page .status-panel-empty,
+    .dark-mode .dashboard-page .modal-body,
+    .dark-mode .dashboard-page .edit-card label {
         color: #8b98a3;
     }
 
-    .dashboard-page.dark-mode .theme-toggle-btn {
+    .dark-mode .dashboard-page .theme-toggle-btn {
         background: #131f2e;
         border-color: #223244;
         color: #e8edf0;
     }
 
-        .dashboard-page.dark-mode .theme-toggle-btn:hover {
+        .dark-mode .dashboard-page .theme-toggle-btn:hover {
             background: #182530;
         }
 
-    .dashboard-page.dark-mode .status-panel,
-    .dashboard-page.dark-mode .employees-table,
-    .dashboard-page.dark-mode .modal-card {
+    .dark-mode .dashboard-page .status-panel,
+    .dark-mode .dashboard-page .employees-table,
+    .dark-mode .dashboard-page .modal-card {
         background: #131f2e;
         border: 1px solid #223244;
         box-shadow: none;
     }
 
-    .dashboard-page.dark-mode .active-header {
+    .dark-mode .dashboard-page .active-header {
         background: #14a3ad;
     }
 
-    .dashboard-page.dark-mode .inactive-header {
+    .dark-mode .dashboard-page .inactive-header {
         background: #3a4956;
     }
 
-    .dashboard-page.dark-mode .status-panel-row,
-    .dashboard-page.dark-mode .employees-table td,
-    .dashboard-page.dark-mode .name-cell span {
+    .dark-mode .dashboard-page .status-panel-row,
+    .dark-mode .dashboard-page .employees-table td,
+    .dark-mode .dashboard-page .name-cell span {
         color: #e8edf0;
     }
 
-        .dashboard-page.dark-mode .status-panel-row:hover,
-        .dashboard-page.dark-mode .employees-table tbody tr:hover {
+        .dark-mode .dashboard-page .status-panel-row:hover,
+        .dark-mode .dashboard-page .employees-table tbody tr:hover {
             background: #182530;
         }
 
-    .dashboard-page.dark-mode .employees-table th {
+    .dark-mode .dashboard-page .employees-table th {
         background: #182530;
         color: #8b98a3;
         border-bottom-color: #223244;
     }
 
-    .dashboard-page.dark-mode .employees-table td {
+    .dark-mode .dashboard-page .employees-table td {
         border-bottom-color: #223244;
     }
 
-    .dashboard-page.dark-mode .inactive-dot {
+    .dark-mode .dashboard-page .inactive-dot {
         background: #8b98a3;
     }
 
-    .dashboard-page.dark-mode .edit-btn {
+    .dark-mode .dashboard-page .edit-btn {
         background: transparent;
         border-color: #223244;
         color: #e8edf0;
     }
 
-        .dashboard-page.dark-mode .edit-btn:hover {
+        .dark-mode .dashboard-page .edit-btn:hover {
             background: #182530;
         }
 
-    .dashboard-page.dark-mode .form-input {
+    .dark-mode .dashboard-page .form-input {
         background: #182530;
         border-color: #223244;
         color: #e8edf0;
     }
 
-    .dashboard-page.dark-mode .modal-btn-cancel {
+    .dark-mode .dashboard-page .modal-btn-cancel {
         background: transparent;
         border-color: #223244;
         color: #e8edf0;
     }
 
-        .dashboard-page.dark-mode .modal-btn-cancel:hover {
+        .dark-mode .dashboard-page .modal-btn-cancel:hover {
             background: #182530;
         }
 
-    .dashboard-page.dark-mode .role-admin {
+    .dark-mode .dashboard-page .role-admin {
         background: rgba(224, 110, 100, 0.18);
         color: #f0928a;
     }
 
-    .dashboard-page.dark-mode .role-employee {
+    .dark-mode .dashboard-page .role-employee {
         background: rgba(20, 163, 173, 0.18);
         color: #5fd3da;
     }
 
-    .dashboard-page.dark-mode .role-manager {
+    .dark-mode .dashboard-page .role-manager {
         background: rgba(211, 180, 146, 0.2);
         color: #e8c99a;
     }
 
-    .dashboard-page.dark-mode .status-panel-row {
+    .dark-mode .dashboard-page .status-panel-row {
         border-bottom-color: #223244;
     }
 
@@ -823,11 +832,214 @@
     color: #606060;
 }
 
-.dashboard-page.dark-mode .status-dropdown {
+.dark-mode .dashboard-page .status-dropdown {
     background: #16283a;
     border-color: #223244;
 }
 
-.dashboard-page.dark-mode .status-panel-name {
+.dark-mode .dashboard-page .status-panel-name {
     color: #e8edf0;
+}
+
+/* ---- Projects on the dashboard ---- */
+
+.current-project-link {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 14px;
+    margin-top: 2px;
+    border-radius: 10px;
+    background: rgba(9, 137, 147, 0.22);
+    border: 1px solid rgba(20, 163, 173, 0.55);
+    text-decoration: none;
+}
+
+    .current-project-link:hover {
+        background: rgba(9, 137, 147, 0.32);
+    }
+
+.current-project-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.current-project-meta {
+    font-size: 12.5px;
+    color: #9fd6da;
+}
+
+.status-dropdown-section {
+    padding: 10px 18px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #8b98a3;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-dropdown-item.disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.status-dropdown-note {
+    padding: 2px 18px 8px;
+    font-size: 12px;
+    color: #8b98a3;
+}
+
+/* Timer card and My Projects side by side (stacks on narrow screens). */
+.employee-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1040px);
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 32px;
+}
+
+    .employee-grid.has-projects {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .employee-grid .timer-card {
+        margin-bottom: 0;
+        max-width: none;
+    }
+
+.my-projects-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.my-projects {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+@media (max-width: 1100px) {
+    .employee-grid.has-projects {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.my-project-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e9eb;
+    text-decoration: none;
+    color: #0c1a27;
+    box-shadow: 0 4px 12px -4px rgba(12, 26, 39, 0.08);
+}
+
+    .my-project-card:hover {
+        border-color: #098993;
+    }
+
+    .my-project-card.current {
+        border-color: #098993;
+        box-shadow: 0 0 0 2px rgba(9, 137, 147, 0.25);
+    }
+
+.my-project-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.my-project-code {
+    font-size: 12px;
+    font-weight: 700;
+    color: #606060;
+}
+
+.my-project-sample {
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 2px;
+}
+
+.my-project-meta {
+    font-size: 13px;
+    color: #3d4f5c;
+}
+
+.my-project-due {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #606060;
+}
+
+    .my-project-due.due-soon {
+        color: #b3413a;
+    }
+
+.project-status {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.status-unassigned { background: #eceff1; color: #4a5a66; }
+.status-assigned { background: #fbf0d6; color: #7a5510; }
+.status-in-progress { background: #dff2f3; color: #066b73; }
+.status-for-checking { background: #e2ecfb; color: #2a5ea8; }
+.status-completed { background: #e3f4ea; color: #1d6b3f; }
+
+.status-project {
+    background: rgba(9, 137, 147, 0.14);
+    color: #076e76;
+    text-decoration: none;
+    text-transform: none;
+}
+
+    .status-project:hover {
+        text-decoration: underline;
+    }
+
+.dark-mode .dashboard-page .my-project-card {
+    background: #131f2e;
+    border-color: #223244;
+    color: #e8edf0;
+    box-shadow: none;
+}
+
+    .dark-mode .dashboard-page .my-project-card:hover,
+    .dark-mode .dashboard-page .my-project-card.current {
+        border-color: #14a3ad;
+    }
+
+.dark-mode .dashboard-page .my-project-code,
+.dark-mode .dashboard-page .my-project-due {
+    color: #8b98a3;
+}
+
+.dark-mode .dashboard-page .my-project-meta {
+    color: #c6d3dc;
+}
+
+.dark-mode .dashboard-page .my-project-due.due-soon {
+    color: #f0928a;
+}
+
+.dark-mode .dashboard-page .status-unassigned { background: #2a3a47; color: #c6d3dc; }
+.dark-mode .dashboard-page .status-assigned { background: #4a3a14; color: #f0c96a; }
+.dark-mode .dashboard-page .status-in-progress { background: #0c4a50; color: #5fd0d8; }
+.dark-mode .dashboard-page .status-for-checking { background: #1c3560; color: #8db8f2; }
+.dark-mode .dashboard-page .status-completed { background: #16452e; color: #6fd39b; }
+
+.dark-mode .dashboard-page .status-project {
+    background: rgba(20, 163, 173, 0.18);
+    color: #5fd3da;
 }
