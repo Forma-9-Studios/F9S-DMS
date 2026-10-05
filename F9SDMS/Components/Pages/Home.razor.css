@@ -1043,3 +1043,45 @@
     background: rgba(20, 163, 173, 0.18);
     color: #5fd3da;
 }
+
+/* ---- Sub-categories ---- */
+.status-dropdown-group {
+    padding: 9px 18px 3px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #8b98a3;
+}
+
+.status-dropdown-sub {
+    padding-left: 30px;
+}
+
+.my-project-subs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.my-project-sub {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #eef2f3;
+    color: #3d4f5c;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+    .my-project-sub.current {
+        background: rgba(9, 137, 147, 0.14);
+        color: #076e76;
+    }
+
+.dark-mode .dashboard-page .my-project-sub {
+    background: #1b2b3c;
+    color: #c6d3dc;
+}
+
+    .dark-mode .dashboard-page .my-project-sub.current {
+        background: rgba(20, 163, 173, 0.2);
+        color: #5fd3da;
+    }

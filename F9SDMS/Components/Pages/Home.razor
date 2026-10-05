@@ -117,7 +117,7 @@
                         @if (CurrentProject is not null)
                         {
                             <a href="/projects/@CurrentProject.Id" class="current-project-link">
-                                <span class="current-project-title">@CurrentProject.Code · @CurrentProject.Sample</span>
+                                <span class="current-project-title">@CurrentProject.Code · @CurrentProject.Sample@(CurrentSubName is null ? "" : " › " + CurrentSubName)</span>
                                 <span class="current-project-meta">@(string.IsNullOrEmpty(CurrentProject.Meta) ? "" : CurrentProject.Meta + " · ")View details &rsaquo;</span>
                             </a>
                         }
@@ -140,9 +140,23 @@
                                     <div class="status-dropdown-section">My projects</div>
                                     @foreach (var project in myProjects)
                                     {
-                                        <div class="status-dropdown-item @(currentProjectId == project.Id ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => SetProjectStatus(project)">
-                                            @project.Code · @project.Sample
-                                        </div>
+                                        if (project.Subcategories.Count > 0)
+                                        {
+                                            @* Projects with sub-categories: pick the exact part you're working on. *@
+                                            <div class="status-dropdown-group">@project.Code · @project.Sample</div>
+                                            @foreach (var sub in project.Subcategories)
+                                            {
+                                                <div class="status-dropdown-item status-dropdown-sub @(currentSubcategoryId == sub.Id ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => SetProjectStatus(project, sub.Id)">
+                                                    @sub.Name
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <div class="status-dropdown-item @(currentProjectId == project.Id && currentSubcategoryId is null ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => SetProjectStatus(project, null)">
+                                                @project.Code · @project.Sample
+                                            </div>
+                                        }
                                     }
                                     @if (!clockInTime.HasValue)
                                     {
@@ -197,6 +211,15 @@
                                 </div>
                                 <span class="project-status status-@ProjectOptions.StatusCss(project.Status)">@project.Status</span>
                             </div>
+                            @if (project.Subcategories.Count > 0)
+                            {
+                                <div class="my-project-subs">
+                                    @foreach (var sub in project.Subcategories)
+                                    {
+                                        <span class="my-project-sub @(currentSubcategoryId == sub.Id ? "current" : "")">@sub.Name@(currentSubcategoryId == sub.Id ? " · working now" : "")</span>
+                                    }
+                                </div>
+                            }
                             <div class="my-project-meta">@project.Meta</div>
                             <div class="my-project-due @(project.DueSoon ? "due-soon" : "")">Due @project.DueDate.ToString("MMM d, yyyy")</div>
                         </a>
@@ -383,6 +406,10 @@
     private int? currentProjectId;
     private List<MyProject> myProjects = new();
     private MyProject? CurrentProject => currentProjectId is int id ? myProjects.FirstOrDefault(p => p.Id == id) : null;
+    private int? currentSubcategoryId;
+    private string? CurrentSubName => currentSubcategoryId is int sid
+        ? CurrentProject?.Subcategories.FirstOrDefault(x => x.Id == sid)?.Name
+        : null;
     private bool showStatusDropdown = false;
     private string customStatusInput = "";
 
@@ -446,6 +473,7 @@
             {
                 currentStatus = string.IsNullOrWhiteSpace(user.CurrentStatus) ? "Available" : user.CurrentStatus;
                 currentProjectId = user.CurrentProjectId;
+                currentSubcategoryId = user.CurrentSubcategoryId;
 
                 if (!string.IsNullOrWhiteSpace(user.FirstName))
                 {
@@ -598,6 +626,7 @@
                 if (currentProjectId is not null)
                 {
                     currentProjectId = null;
+                    currentSubcategoryId = null;
                     currentStatus = AvailableStatus;
                 }
             }
@@ -629,6 +658,7 @@
             {
                 currentStatus = string.IsNullOrWhiteSpace(freshUser.CurrentStatus) ? AvailableStatus : freshUser.CurrentStatus;
                 currentProjectId = freshUser.CurrentProjectId;
+                currentSubcategoryId = freshUser.CurrentSubcategoryId;
             }
 
             if (canViewTeamStatus)
@@ -703,6 +733,7 @@
     {
         currentStatus = status;
         currentProjectId = null;
+        currentSubcategoryId = null;
         showStatusDropdown = false;
 
         if (currentUserId is not null)
@@ -715,6 +746,7 @@
                 {
                     user.CurrentStatus = status;
                     user.CurrentProjectId = null;
+                    user.CurrentSubcategoryId = null;
                     await db.SaveChangesAsync();
                 }
 
@@ -733,14 +765,21 @@
         }
     }
 
-    private async Task SetProjectStatus(MyProject project)
+    private async Task SetProjectStatus(MyProject project, int? subcategoryId)
     {
         showStatusDropdown = false;
 
-        // Project time only counts while clocked in; picking the current project again does nothing.
-        if (currentUserId is null || !clockInTime.HasValue || currentProjectId == project.Id) return;
+        // Project time only counts while clocked in; picking what you're already on does nothing.
+        if (currentUserId is null || !clockInTime.HasValue) return;
+        if (currentProjectId == project.Id && currentSubcategoryId == subcategoryId) return;
 
-        var status = $"{project.Code} · {project.Sample}";
+        // A project with sub-categories must be worked on through one of them.
+        var sub = subcategoryId is int sid ? project.Subcategories.FirstOrDefault(x => x.Id == sid) : null;
+        if (project.Subcategories.Count > 0 && sub is null) return;
+
+        var status = sub is null
+            ? $"{project.Code} · {project.Sample}"
+            : $"{project.Code} · {project.Sample} › {sub.Name}";
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
@@ -749,13 +788,15 @@
             {
                 user.CurrentStatus = status;
                 user.CurrentProjectId = project.Id;
+                user.CurrentSubcategoryId = sub?.Id;
                 await db.SaveChangesAsync();
             }
 
-            await F9SDMS.Services.ProjectWork.StartAsync(db, currentUserId, project.Id, Clock.Now);
+            await F9SDMS.Services.ProjectWork.StartAsync(db, currentUserId, project.Id, sub?.Id, Clock.Now);
 
             currentStatus = status;
             currentProjectId = project.Id;
+            currentSubcategoryId = sub?.Id;
             await LoadMyProjects();
         }
         catch (Exception ex)
@@ -780,6 +821,7 @@
             var today = Clock.Now.Date;
             var projects = await db.Projects
                 .AsNoTracking()
+                .Include(p => p.Subcategories)
                 .Where(p => p.Status != ProjectOptions.StatusCompleted && p.Assignments.Any(a => a.EmployeeId == userId))
                 .OrderBy(p => p.DueDate)
                 .ToListAsync();
@@ -792,7 +834,12 @@
                 Status = p.Status,
                 DueDate = p.DueDate,
                 DueSoon = p.DueDate.Date <= today.AddDays(3),
-                Meta = string.Join(" · ", new[] { p.Category, p.Lod }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                Meta = string.Join(" · ", new[] { p.Category, p.Lod }.Where(x => !string.IsNullOrWhiteSpace(x))),
+                Subcategories = p.Subcategories
+                    .Where(x => !x.IsArchived)
+                    .OrderBy(x => x.Id)
+                    .Select(x => new MySubcategory(x.Id, x.Name))
+                    .ToList()
             }).ToList();
         }
         catch (Exception ex)
@@ -994,7 +1041,10 @@
         public DateTime DueDate { get; set; }
         public bool DueSoon { get; set; }
         public string Meta { get; set; } = "";
+        public List<MySubcategory> Subcategories { get; set; } = new();
     }
+
+    private sealed record MySubcategory(int Id, string Name);
 
     private string GetInitials(string firstName, string lastName)
     {

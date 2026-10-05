@@ -81,7 +81,14 @@
                                 .ToList();
                             <tr>
                                 <td class="muted">@p.Code</td>
-                                <td><a href="/projects/@p.Id" class="sample-link">@p.Sample</a></td>
+                                <td>
+                                    <a href="/projects/@p.Id" class="sample-link">@p.Sample</a>
+                                    @{ var activeSubs = p.Subcategories.Count(x => !x.IsArchived); }
+                                    @if (activeSubs > 0)
+                                    {
+                                        <span class="sub-count" title="@(string.Join(", ", p.Subcategories.Where(x => !x.IsArchived).Select(x => x.Name)))">(@activeSubs)</span>
+                                    }
+                                </td>
                                 <td>@(p.Category ?? "—")</td>
                                 <td>
                                     @if (!string.IsNullOrEmpty(p.Lod))
@@ -185,6 +192,37 @@
                             }
                         </div>
 
+                        <div class="sub-section">
+                            <div class="sub-header">
+                                <span class="sub-title">Sub-categories</span>
+                                <span class="hint">Optional. When added, employees log time to these instead of the project itself.</span>
+                            </div>
+                            @foreach (var sub in editor.Subcategories.Where(x => !x.Removed))
+                            {
+                                <div class="sub-row @(sub.IsArchived ? "archived" : "")" @key="sub.Key">
+                                    <input class="sub-name-input" aria-label="Sub-category name" maxlength="200" @bind="sub.Name" disabled="@sub.IsArchived" />
+                                    <span class="sub-hours">@(sub.Hours > TimeSpan.Zero ? FormatHours(sub.Hours) + " logged" : "No hours yet")@(sub.IsArchived ? " · archived" : "")</span>
+                                    @if (sub.IsArchived)
+                                    {
+                                        <button type="button" class="sub-btn" @onclick="() => sub.IsArchived = false">Restore</button>
+                                    }
+                                    else if (sub.Hours > TimeSpan.Zero)
+                                    {
+                                        <button type="button" class="sub-btn" title="Hides it from employees; its hours are kept" @onclick="() => sub.IsArchived = true">Archive</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="sub-btn" @onclick="() => RemoveSub(sub)">Remove</button>
+                                    }
+                                </div>
+                            }
+                            <div class="sub-add-row">
+                                <label for="pNewSub" class="visually-hidden">New sub-category</label>
+                                <input id="pNewSub" class="form-input" maxlength="200" placeholder="New sub-category" @bind="newSubName" @bind:event="oninput" @onkeydown="NewSubKeyDown" />
+                                <button type="button" class="sub-add-btn" @onclick="AddSub">+ Add</button>
+                            </div>
+                        </div>
+
                         <div class="form-field">
                             <label for="pAssignee">BIM Engineer / Architect</label>
                             <div class="chip-input">
@@ -251,6 +289,7 @@
     // Changing this rebuilds the "Add engineer or architect" dropdown so it always
     // goes back to its placeholder after someone is added or removed.
     private int assigneePickerKey;
+    private string newSubName = "";
     private string? formError;
     private bool isSaving;
     private string? currentUserId;
@@ -289,6 +328,7 @@
         projects = await db.Projects
             .AsNoTracking()
             .Include(p => p.Assignments)
+            .Include(p => p.Subcategories)
             .OrderByDescending(p => p.Id)
             .ToListAsync();
 
@@ -304,7 +344,7 @@
     {
         bool Has(string? value) => value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
-        return Has(p.Code) || Has(p.Sample) || Has(p.Category) || Has(p.Lod)
+        return Has(p.Code) || Has(p.Sample) || Has(p.Category) || p.Subcategories.Any(x => Has(x.Name)) || Has(p.Lod)
             || p.Assignments.Any(a => peopleById.TryGetValue(a.EmployeeId, out var person) && Has(person.Name));
     }
 
@@ -318,14 +358,49 @@
     private void OpenAdd()
     {
         formError = null;
+        newSubName = "";
         editor = new ProjectEditor { DueDate = Clock.Now.Date.AddDays(14) };
     }
 
-    private void OpenEdit(Project p)
+    private async Task OpenEdit(Project p)
     {
         formError = null;
+        newSubName = "";
+
+        // Hours already logged per sub-category (decides Archive vs Remove).
+        var subEdits = new List<SubcategoryEdit>();
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var now = Clock.Now;
+            var subs = await db.ProjectSubcategories
+                .AsNoTracking()
+                .Where(x => x.ProjectId == p.Id)
+                .OrderBy(x => x.Id)
+                .ToListAsync();
+            var logged = await db.ProjectTimeEntries
+                .AsNoTracking()
+                .Where(t => t.ProjectId == p.Id && t.SubcategoryId != null)
+                .Select(t => new { t.SubcategoryId, t.StartTime, t.EndTime })
+                .ToListAsync();
+
+            subEdits = subs.Select(x => new SubcategoryEdit
+            {
+                Id = x.Id,
+                Name = x.Name,
+                IsArchived = x.IsArchived,
+                Hours = logged.Where(t => t.SubcategoryId == x.Id)
+                    .Aggregate(TimeSpan.Zero, (sum, t) => sum + ((t.EndTime ?? now) - t.StartTime))
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading sub-categories failed.");
+        }
+
         editor = new ProjectEditor
         {
+            Subcategories = subEdits,
             Id = p.Id,
             Sample = p.Sample,
             Lod = p.Lod ?? "",
@@ -336,6 +411,46 @@
             AssigneeIds = p.Assignments.Select(a => a.EmployeeId).Distinct().ToList()
         };
     }
+
+    private void AddSub()
+    {
+        if (editor is null) return;
+
+        var name = newSubName.Trim();
+        if (name.Length == 0) return;
+
+        if (editor.Subcategories.Any(x => !x.Removed && string.Equals(x.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            formError = $"\"{name}\" is already a sub-category of this project.";
+            return;
+        }
+
+        editor.Subcategories.Add(new SubcategoryEdit { Name = name });
+        newSubName = "";
+        formError = null;
+    }
+
+    private void NewSubKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddSub();
+    }
+
+    private void RemoveSub(SubcategoryEdit sub)
+    {
+        if (editor is null) return;
+
+        if (sub.Id == 0)
+        {
+            editor.Subcategories.Remove(sub);
+        }
+        else
+        {
+            sub.Removed = true;
+        }
+    }
+
+    private static string FormatHours(TimeSpan span) =>
+        $"{(int)span.TotalHours:D2}:{span.Minutes:D2}";
 
     private void CloseEditor()
     {
@@ -371,6 +486,18 @@
             return;
         }
 
+        var keptSubs = editor.Subcategories.Where(x => !x.Removed).ToList();
+        if (keptSubs.Any(x => string.IsNullOrWhiteSpace(x.Name)))
+        {
+            formError = "Sub-category names can't be empty.";
+            return;
+        }
+        if (keptSubs.GroupBy(x => x.Name.Trim(), StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+        {
+            formError = "Two sub-categories can't have the same name.";
+            return;
+        }
+
         isSaving = true;
         try
         {
@@ -387,6 +514,7 @@
             {
                 var existing = await db.Projects
                     .Include(p => p.Assignments)
+                    .Include(p => p.Subcategories)
                     .FirstOrDefaultAsync(p => p.Id == editor.Id);
 
                 if (existing is null)
@@ -416,6 +544,47 @@
                 project.Assignments.Add(new ProjectAssignment { EmployeeId = id });
             }
 
+            // Sync sub-categories. Ones with hours are archived instead of removed.
+            var endedSubIds = new List<int>();
+            foreach (var edit in editor.Subcategories)
+            {
+                var name = edit.Name.Trim();
+
+                if (edit.Id == 0)
+                {
+                    if (!edit.Removed && name.Length > 0)
+                    {
+                        project.Subcategories.Add(new ProjectSubcategory { Name = name, CreatedAt = now });
+                    }
+                    continue;
+                }
+
+                var stored = project.Subcategories.FirstOrDefault(x => x.Id == edit.Id);
+                if (stored is null) continue;
+
+                if (edit.Removed)
+                {
+                    var editId = edit.Id;
+                    if (await db.ProjectTimeEntries.AnyAsync(t => t.SubcategoryId == editId))
+                    {
+                        stored.IsArchived = true;
+                    }
+                    else
+                    {
+                        project.Subcategories.Remove(stored);
+                    }
+                    endedSubIds.Add(edit.Id);
+                    continue;
+                }
+
+                stored.Name = name;
+                if (edit.IsArchived && !stored.IsArchived)
+                {
+                    endedSubIds.Add(edit.Id);
+                }
+                stored.IsArchived = edit.IsArchived;
+            }
+
             // Status: new projects start as Assigned; nobody assigned means Unassigned.
             var chosenStatus = editor.Id == 0 ? ProjectOptions.StatusAssigned : editor.Status;
             if (selected.Count == 0)
@@ -432,6 +601,20 @@
             }
 
             await db.SaveChangesAsync();
+
+            // Anyone working on an archived or removed sub-category stops.
+            if (endedSubIds.Count > 0)
+            {
+                var affected = await db.Users
+                    .AsNoTracking()
+                    .Where(u => u.CurrentSubcategoryId != null && endedSubIds.Contains(u.CurrentSubcategoryId.Value))
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                foreach (var userId in affected)
+                {
+                    await ProjectWork.StopAsync(db, userId, now, clearCurrentProject: true);
+                }
+            }
 
             // Anyone taken off the project stops working on it.
             foreach (var assignment in removed)
@@ -482,5 +665,16 @@
         public string Notes { get; set; } = "";
         public string Status { get; set; } = ProjectOptions.StatusAssigned;
         public List<string> AssigneeIds { get; set; } = new();
+        public List<SubcategoryEdit> Subcategories { get; set; } = new();
+    }
+
+    private sealed class SubcategoryEdit
+    {
+        public string Key { get; } = Guid.NewGuid().ToString("N");
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public bool IsArchived { get; set; }
+        public bool Removed { get; set; }
+        public TimeSpan Hours { get; set; }
     }
 }

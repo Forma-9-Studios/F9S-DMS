@@ -8,6 +8,20 @@
     }
 };
 
+// ---- File download (used by "Export to Excel") ----
+f9sdms.downloadFile = async function (fileName, streamRef) {
+    const buffer = await streamRef.arrayBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+};
+
 // ---- Theme (dark / light) ----
 // Saved in a cookie so the server can render the right theme on the first frame.
 f9sdms.setTheme = function (theme) {

@@ -37,6 +37,8 @@ namespace F9SDMS.Data
 
         public List<ProjectTimeEntry> TimeEntries { get; set; } = new();
 
+        public List<ProjectSubcategory> Subcategories { get; set; } = new();
+
         /// <summary>Display code, e.g. "P-0012". Not stored.</summary>
         public string Code => FormatCode(Id);
 

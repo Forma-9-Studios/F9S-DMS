@@ -453,6 +453,130 @@ textarea.form-input {
         cursor: default;
     }
 
+/* Sub-categories (in the Add / Edit modal) */
+.sub-count {
+    margin-left: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #606060;
+}
+
+.sub-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    border-radius: 10px;
+    background: #eef7f8;
+    border: 1px solid #c9e6e8;
+}
+
+.sub-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 6px 12px;
+}
+
+.sub-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0c1a27;
+}
+
+.sub-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px 6px 12px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #d3dade;
+}
+
+    .sub-row.archived {
+        background: #f1f3f4;
+        border-style: dashed;
+    }
+
+.sub-name-input {
+    flex-grow: 1;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0c1a27;
+}
+
+    .sub-name-input:hover:not(:disabled) {
+        border-color: #d3dade;
+    }
+
+    .sub-name-input:focus {
+        outline: none;
+        border-color: #098993;
+        background: #ffffff;
+    }
+
+    .sub-name-input:disabled {
+        color: #7a8892;
+        text-decoration: line-through;
+    }
+
+.sub-hours {
+    font-size: 12px;
+    color: #5b6b76;
+    white-space: nowrap;
+}
+
+.sub-btn {
+    border: 1px solid #cfd6da;
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: #3d4f5c;
+    cursor: pointer;
+}
+
+    .sub-btn:hover {
+        border-color: #098993;
+        color: #098993;
+    }
+
+.sub-add-row {
+    display: flex;
+    gap: 8px;
+}
+
+    .sub-add-row .form-input {
+        background: #ffffff;
+    }
+
+.sub-add-btn {
+    flex: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    border: none;
+    background: #098993;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.dark-mode .sub-count {
+    color: #8b98a3;
+}
+
 @media (max-width: 720px) {
     .form-grid {
         grid-template-columns: 1fr;

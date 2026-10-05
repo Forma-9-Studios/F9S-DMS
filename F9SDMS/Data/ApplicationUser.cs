@@ -11,5 +11,8 @@ namespace F9SDMS.Data
 
         /// <summary>The project the employee is working on right now (their status), if any.</summary>
         public int? CurrentProjectId { get; set; }
+
+        /// <summary>The sub-category of <see cref="CurrentProjectId"/> being worked on, if any.</summary>
+        public int? CurrentSubcategoryId { get; set; }
     }
 }

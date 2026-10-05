@@ -12,6 +12,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IAppClock Clock
 @inject ILogger<ProjectDetails> Logger
+@inject IJSRuntime JS
 
 <PageTitle>@(project is null ? "Project" : $"{project.Code} · {project.Sample}")</PageTitle>
 
@@ -86,16 +87,83 @@
                 </div>
             </div>
 
+            <div class="breakdown-card">
+                <div class="breakdown-header">
+                    <h2>Hours by sub-category</h2>
+                    <div class="breakdown-actions">
+                        @if (isManagerView)
+                        {
+                            <button type="button" class="export-btn" @onclick="ExportExcel" disabled="@isExporting">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                @(isExporting ? "Preparing…" : "Export to Excel")
+                            </button>
+                        }
+                        <span class="breakdown-total">Total <strong>@FormatDuration(TotalDuration)</strong></span>
+                    </div>
+                </div>
+
+                @if (breakdown.Count == 0)
+                {
+                    <div class="breakdown-empty">
+                        No sub-categories yet.@(isManagerView ? " Add one below to split this project's hours (e.g. Golf, Bowling, FEC)." : "")
+                    </div>
+                }
+                @foreach (var row in breakdown)
+                {
+                    <div class="breakdown-row">
+                        <span class="breakdown-name @(row.Archived ? "archived" : "")">@row.Name@(row.Archived ? " (archived)" : "")</span>
+                        <div class="breakdown-bar-wrap">
+                            <div class="breakdown-bar"><div class="breakdown-fill" style="width: @(BarPercent(row.Hours).ToString(System.Globalization.CultureInfo.InvariantCulture))%"></div></div>
+                            @if (!string.IsNullOrEmpty(row.People))
+                            {
+                                <span class="breakdown-people">@row.People</span>
+                            }
+                        </div>
+                        <span class="breakdown-hours">@FormatDuration(row.Hours)</span>
+                    </div>
+                }
+
+                @if (isManagerView)
+                {
+                    <div class="breakdown-add">
+                        <label for="detailNewSub" class="visually-hidden">New sub-category</label>
+                        <input id="detailNewSub" class="breakdown-input" maxlength="200" placeholder="New sub-category" @bind="newSubName" @bind:event="oninput" @onkeydown="NewSubKeyDown" />
+                        <button type="button" class="secondary-btn" @onclick="AddSubcategory" disabled="@isSaving">+ Add sub-category</button>
+                        @if (!string.IsNullOrEmpty(subMessage))
+                        {
+                            <span class="breakdown-message">@subMessage</span>
+                        }
+                    </div>
+                }
+            </div>
+
             <div class="log-card">
                 <div class="log-header">
                     <h2>Time log</h2>
-                    <span class="log-hint">Time is logged while this project is someone's current status.</span>
+                    @if (subFilterOptions.Count > 0)
+                    {
+                        <div class="log-filter">
+                            <label for="subFilter">Sub-category</label>
+                            <select id="subFilter" @bind="subFilter">
+                                <option value="">All</option>
+                                @foreach (var option in subFilterOptions)
+                                {
+                                    <option value="@option.Key">@option.Name</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="log-hint">Time is logged while this project is someone's current status.</span>
+                    }
                 </div>
                 <div class="table-scroll">
                     <table class="log-table">
                         <thead>
                             <tr>
                                 <th>BIM Engineer / Architect</th>
+                                <th>Sub-category</th>
                                 <th>Date</th>
                                 <th>Start</th>
                                 <th>Stop</th>
@@ -103,10 +171,11 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var entry in entries)
+                            @foreach (var entry in VisibleEntries)
                             {
                                 <tr>
                                     <td>@entry.Name</td>
+                                    <td><span class="sub-pill">@entry.SubName</span></td>
                                     <td>@entry.Start.ToString("MMM d, yyyy")</td>
                                     <td>@entry.Start.ToString("hh:mm:ss tt")</td>
                                     <td>
@@ -123,12 +192,12 @@
                                 </tr>
                             }
                         </tbody>
-                        @if (entries.Count > 0)
+                        @if (VisibleEntries.Any())
                         {
                             <tfoot>
                                 <tr>
-                                    <td colspan="4" class="num">Total hours:</td>
-                                    <td class="num">@FormatDuration(TotalDuration)</td>
+                                    <td colspan="5" class="num">@(subFilter == "" ? "Total hours:" : "Total for this sub-category:")</td>
+                                    <td class="num">@FormatDuration(VisibleEntries.Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration))</td>
                                 </tr>
                             </tfoot>
                         }
@@ -155,6 +224,24 @@
     private List<string> assigneeNames = new();
     private string? createdByName;
     private List<LogRow> entries = new();
+    private List<BreakdownRow> breakdown = new();
+    private List<(string Key, string Name)> subFilterOptions = new();
+    private string subFilter = "";
+    private string newSubName = "";
+    private string? subMessage;
+    private bool isExporting;
+
+    private const string GeneralKey = "general";
+    private const string GeneralName = "General (no sub-category)";
+
+    private IEnumerable<LogRow> VisibleEntries =>
+        subFilter == "" ? entries : entries.Where(e => e.SubKey == subFilter);
+
+    private double BarPercent(TimeSpan hours)
+    {
+        var total = TotalDuration.TotalSeconds;
+        return total <= 0 ? 0 : Math.Round(hours.TotalSeconds / total * 100, 1);
+    }
 
     private string notes = "";
     private string? saveMessage;
@@ -221,11 +308,53 @@
             .OrderByDescending(t => t.StartTime)
             .ToListAsync();
 
-        entries = timeEntries.Select(t => new LogRow(
-            names.TryGetValue(t.EmployeeId, out var n) ? n : "Unknown",
-            t.StartTime,
-            t.EndTime,
-            (t.EndTime ?? now) - t.StartTime)).ToList();
+        var subs = await db.ProjectSubcategories
+            .AsNoTracking()
+            .Where(x => x.ProjectId == ProjectId)
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        var subById = subs.ToDictionary(x => x.Id);
+
+        entries = timeEntries.Select(t =>
+        {
+            var hasSub = t.SubcategoryId is int sid && subById.ContainsKey(sid);
+            var duration = (t.EndTime ?? now) - t.StartTime;
+            return new LogRow(
+                names.TryGetValue(t.EmployeeId, out var n) ? n : "Unknown",
+                t.StartTime,
+                t.EndTime,
+                duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
+                hasSub ? t.SubcategoryId!.Value.ToString() : GeneralKey,
+                hasSub ? subById[t.SubcategoryId!.Value].Name : GeneralName);
+        }).ToList();
+
+        // Hours by sub-category: every active one (even at 0), archived ones that have hours,
+        // and "General" for time logged before sub-categories were added.
+        string PeopleSummary(IEnumerable<LogRow> rows) => string.Join(" · ", rows
+            .GroupBy(r => r.Name)
+            .Select(g => (Name: g.Key, Hours: g.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.Duration)))
+            .OrderByDescending(x => x.Hours)
+            .Select(x => $"{x.Name} {FormatShort(x.Hours)}"));
+
+        breakdown = new List<BreakdownRow>();
+        foreach (var sub in subs)
+        {
+            var key = sub.Id.ToString();
+            var rows = entries.Where(e => e.SubKey == key).ToList();
+            if (sub.IsArchived && rows.Count == 0) continue;
+            breakdown.Add(new BreakdownRow(key, sub.Name, rows.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.Duration), PeopleSummary(rows), sub.IsArchived));
+        }
+        var general = entries.Where(e => e.SubKey == GeneralKey).ToList();
+        if (general.Count > 0 && subs.Count > 0)
+        {
+            breakdown.Add(new BreakdownRow(GeneralKey, GeneralName, general.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.Duration), PeopleSummary(general), false));
+        }
+
+        subFilterOptions = breakdown.Select(b => (b.Key, b.Archived ? $"{b.Name} (archived)" : b.Name)).ToList();
+        if (subFilter != "" && subFilterOptions.All(o => o.Key != subFilter))
+        {
+            subFilter = "";
+        }
 
         loaded = true;
     }
@@ -286,11 +415,84 @@
         }
     }
 
+    private async Task NewSubKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddSubcategory();
+    }
+
+    private async Task AddSubcategory()
+    {
+        if (!isManagerView || project is null || isSaving) return;
+
+        var name = newSubName.Trim();
+        if (name.Length == 0) return;
+
+        isSaving = true;
+        subMessage = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var exists = await db.ProjectSubcategories
+                .AnyAsync(x => x.ProjectId == ProjectId && x.Name.ToLower() == name.ToLower());
+            if (exists)
+            {
+                subMessage = $"\"{name}\" already exists (it may be archived; restore it from Edit on the Projects page).";
+                return;
+            }
+
+            db.ProjectSubcategories.Add(new ProjectSubcategory { ProjectId = ProjectId, Name = name, CreatedAt = Clock.Now });
+            await db.SaveChangesAsync();
+            newSubName = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Adding sub-category failed.");
+            subMessage = "Couldn't add the sub-category. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ExportExcel()
+    {
+        if (!isManagerView || isExporting) return;
+
+        isExporting = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var result = await ProjectExcelExport.BuildAsync(db, ProjectId, Clock.Now);
+            if (result is { } file)
+            {
+                using var stream = new MemoryStream(file.Content);
+                using var streamRef = new DotNetStreamReference(stream);
+                await JS.InvokeVoidAsync("f9sdms.downloadFile", file.FileName, streamRef);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Excel export failed.");
+            saveMessage = "Couldn't create the Excel file. Please try again.";
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+
+    private static string FormatShort(TimeSpan span) =>
+        $"{(int)span.TotalHours}:{span.Minutes:D2}";
+
     private static string FormatDuration(TimeSpan span)
     {
         if (span < TimeSpan.Zero) span = TimeSpan.Zero;
         return $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}";
     }
 
-    private sealed record LogRow(string Name, DateTime Start, DateTime? End, TimeSpan Duration);
+    private sealed record LogRow(string Name, DateTime Start, DateTime? End, TimeSpan Duration, string SubKey, string SubName);
+
+    private sealed record BreakdownRow(string Key, string Name, TimeSpan Hours, string People, bool Archived);
 }

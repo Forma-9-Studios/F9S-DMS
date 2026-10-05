@@ -18,6 +18,11 @@ namespace F9SDMS.Data
         [Required]
         public string EmployeeId { get; set; } = string.Empty;
 
+        /// <summary>The sub-category worked on, when the project has sub-categories.</summary>
+        public int? SubcategoryId { get; set; }
+
+        public ProjectSubcategory? Subcategory { get; set; }
+
         public DateTime StartTime { get; set; }
 
         public DateTime? EndTime { get; set; }
