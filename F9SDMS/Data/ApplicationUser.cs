@@ -14,5 +14,8 @@ namespace F9SDMS.Data
 
         /// <summary>The sub-category of <see cref="CurrentProjectId"/> being worked on, if any.</summary>
         public int? CurrentSubcategoryId { get; set; }
+
+        /// <summary>The check submission this person is checking right now, if any.</summary>
+        public int? CurrentCheckId { get; set; }
     }
 }

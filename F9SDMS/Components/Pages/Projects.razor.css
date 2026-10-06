@@ -229,6 +229,17 @@ input.filter-input {
 .status-in-progress { background: #dff2f3; color: #066b73; }
 .status-for-checking { background: #e2ecfb; color: #2a5ea8; }
 .status-completed { background: #e3f4ea; color: #1d6b3f; }
+.status-returned { background: #fbe4e1; color: #a5372f; }
+
+.checker-line {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #606060;
+}
+
+.checker-chip {
+    background: #ece8fb !important;
+}
 
 .empty-state {
     padding: 32px 18px;
@@ -654,3 +665,6 @@ textarea.form-input {
 .dark-mode .status-in-progress { background: #0c4a50; color: #5fd0d8; }
 .dark-mode .status-for-checking { background: #1c3560; color: #8db8f2; }
 .dark-mode .status-completed { background: #16452e; color: #6fd39b; }
+.dark-mode .status-returned { background: #4d2222; color: #ff9d92; }
+.dark-mode .checker-line { color: #8b98a3; }
+.dark-mode .checker-chip { background: #2b2450 !important; color: #e8edf0; }

@@ -21,6 +21,13 @@ namespace F9SDMS.Data
         /// <summary>Archived sub-categories are hidden from employees but keep their hours.</summary>
         public bool IsArchived { get; set; }
 
+        /// <summary>
+        /// Checking status of this part: In Progress, For Checking, Returned or Approved
+        /// (see <see cref="ProjectOptions"/>).
+        /// </summary>
+        [Required, MaxLength(30)]
+        public string Status { get; set; } = ProjectOptions.StatusInProgress;
+
         public DateTime CreatedAt { get; set; }
     }
 }

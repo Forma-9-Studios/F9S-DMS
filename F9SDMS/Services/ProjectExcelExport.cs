@@ -5,8 +5,8 @@ using Microsoft.EntityFrameworkCore;
 namespace F9SDMS.Services
 {
     /// <summary>
-    /// Builds an Excel workbook of a project's hours with three sheets:
-    /// Summary (total + per sub-category), By person (person × sub-category) and Time log.
+    /// Builds an Excel workbook of a project's hours with four sheets: Summary (per sub-category,
+    /// split into Modeling and Checking), By person (person × sub-category), Time log and Check history.
     /// </summary>
     public static class ProjectExcelExport
     {
@@ -47,6 +47,10 @@ namespace F9SDMS.Services
                 var d = (t.EndTime ?? now) - t.StartTime;
                 return d < TimeSpan.Zero ? TimeSpan.Zero : d;
             }
+            bool IsChecking(ProjectTimeEntry t) => t.WorkType == ProjectOptions.WorkChecking;
+            TimeSpan Sum(IEnumerable<ProjectTimeEntry> list) => list.Aggregate(TimeSpan.Zero, (s, e) => s + Duration(e));
+            var statusById = project.Subcategories.ToDictionary(s => s.Id, s => s.IsArchived ? "Archived" : s.Status);
+            var hasSubs = project.Subcategories.Any(s => !s.IsArchived);
 
             // Sub-category order: the project's own order, then "General" if any time has none.
             var subColumns = project.Subcategories.OrderBy(s => s.Id).Select(s => (int?)s.Id).ToList();
@@ -79,29 +83,37 @@ namespace F9SDMS.Services
 
             row++;
             var headerRow = row;
-            summary.Cell(row, 1).Value = "Sub-category";
-            summary.Cell(row, 2).Value = "Hours (h:mm:ss)";
-            summary.Cell(row, 3).Value = "Hours (decimal)";
-            StyleHeader(summary.Range(row, 1, row, 3));
+            var summaryHeaders = new[] { "Sub-category", "Status", "Modeling", "Checking", "Total (h:mm:ss)", "Total (decimal)" };
+            for (var c = 0; c < summaryHeaders.Length; c++) summary.Cell(row, c + 1).Value = summaryHeaders[c];
+            StyleHeader(summary.Range(row, 1, row, summaryHeaders.Length));
             row++;
 
-            var total = TimeSpan.Zero;
+            TimeSpan totalModeling = TimeSpan.Zero, totalChecking = TimeSpan.Zero;
             foreach (var sub in subColumns)
             {
-                var hours = entries.Where(e => e.SubcategoryId == sub).Aggregate(TimeSpan.Zero, (s, e) => s + Duration(e));
-                total += hours;
+                var subEntries = entries.Where(e => e.SubcategoryId == sub).ToList();
+                var modeling = Sum(subEntries.Where(e => !IsChecking(e)));
+                var checking = Sum(subEntries.Where(IsChecking));
+                totalModeling += modeling;
+                totalChecking += checking;
+
                 summary.Cell(row, 1).Value = SubName(sub);
-                SetDuration(summary.Cell(row, 2), hours);
-                summary.Cell(row, 3).Value = Math.Round(hours.TotalHours, 2);
+                summary.Cell(row, 2).Value = sub is int sid && statusById.TryGetValue(sid, out var st) ? st : hasSubs ? "" : project.Status;
+                SetDuration(summary.Cell(row, 3), modeling);
+                SetDuration(summary.Cell(row, 4), checking);
+                SetDuration(summary.Cell(row, 5), modeling + checking);
+                summary.Cell(row, 6).Value = Math.Round((modeling + checking).TotalHours, 2);
                 row++;
             }
 
             summary.Cell(row, 1).Value = "Total";
-            SetDuration(summary.Cell(row, 2), total);
-            summary.Cell(row, 3).Value = Math.Round(total.TotalHours, 2);
-            summary.Range(row, 1, row, 3).Style.Font.Bold = true;
-            summary.Range(row, 1, row, 3).Style.Border.TopBorder = XLBorderStyleValues.Thin;
-            summary.Range(headerRow, 3, row, 3).Style.NumberFormat.Format = "0.00";
+            SetDuration(summary.Cell(row, 3), totalModeling);
+            SetDuration(summary.Cell(row, 4), totalChecking);
+            SetDuration(summary.Cell(row, 5), totalModeling + totalChecking);
+            summary.Cell(row, 6).Value = Math.Round((totalModeling + totalChecking).TotalHours, 2);
+            summary.Range(row, 1, row, 6).Style.Font.Bold = true;
+            summary.Range(row, 1, row, 6).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+            summary.Range(headerRow, 6, row, 6).Style.NumberFormat.Format = "0.00";
             summary.Columns().AdjustToContents();
 
             // ---- By person
@@ -111,8 +123,11 @@ namespace F9SDMS.Services
             {
                 byPerson.Cell(1, c + 2).Value = SubName(subColumns[c]);
             }
-            byPerson.Cell(1, subColumns.Count + 2).Value = "Total";
-            StyleHeader(byPerson.Range(1, 1, 1, subColumns.Count + 2));
+            var modelingCol = subColumns.Count + 2;
+            byPerson.Cell(1, modelingCol).Value = "Modeling";
+            byPerson.Cell(1, modelingCol + 1).Value = "Checking";
+            byPerson.Cell(1, modelingCol + 2).Value = "Total";
+            StyleHeader(byPerson.Range(1, 1, 1, modelingCol + 2));
 
             var people = entries.Select(e => e.EmployeeId).Distinct().OrderBy(PersonName).ToList();
             row = 2;
@@ -127,15 +142,18 @@ namespace F9SDMS.Services
                     personTotal += hours;
                     SetDuration(byPerson.Cell(row, c + 2), hours);
                 }
-                SetDuration(byPerson.Cell(row, subColumns.Count + 2), personTotal);
-                byPerson.Cell(row, subColumns.Count + 2).Style.Font.Bold = true;
+                var personEntries = entries.Where(e => e.EmployeeId == person).ToList();
+                SetDuration(byPerson.Cell(row, modelingCol), Sum(personEntries.Where(e => !IsChecking(e))));
+                SetDuration(byPerson.Cell(row, modelingCol + 1), Sum(personEntries.Where(IsChecking)));
+                SetDuration(byPerson.Cell(row, modelingCol + 2), personTotal);
+                byPerson.Cell(row, modelingCol + 2).Style.Font.Bold = true;
                 row++;
             }
             byPerson.Columns().AdjustToContents();
 
             // ---- Time log
             var log = wb.Worksheets.Add("Time log");
-            var headers = new[] { "BIM Engineer / Architect", "Sub-category", "Date", "Start", "Stop", "Hours" };
+            var headers = new[] { "Person", "Sub-category", "Type", "Date", "Start", "Stop", "Hours" };
             for (var c = 0; c < headers.Length; c++) log.Cell(1, c + 1).Value = headers[c];
             StyleHeader(log.Range(1, 1, 1, headers.Length));
 
@@ -144,20 +162,21 @@ namespace F9SDMS.Services
             {
                 log.Cell(row, 1).Value = PersonName(e.EmployeeId);
                 log.Cell(row, 2).Value = SubName(e.SubcategoryId);
-                log.Cell(row, 3).Value = e.StartTime.Date;
-                log.Cell(row, 3).Style.NumberFormat.Format = "mmm d, yyyy";
-                log.Cell(row, 4).Value = e.StartTime;
-                log.Cell(row, 4).Style.NumberFormat.Format = "h:mm:ss AM/PM";
+                log.Cell(row, 3).Value = IsChecking(e) ? ProjectOptions.WorkChecking : ProjectOptions.WorkModeling;
+                log.Cell(row, 4).Value = e.StartTime.Date;
+                log.Cell(row, 4).Style.NumberFormat.Format = "mmm d, yyyy";
+                log.Cell(row, 5).Value = e.StartTime;
+                log.Cell(row, 5).Style.NumberFormat.Format = "h:mm:ss AM/PM";
                 if (e.EndTime is DateTime end)
                 {
-                    log.Cell(row, 5).Value = end;
-                    log.Cell(row, 5).Style.NumberFormat.Format = "h:mm:ss AM/PM";
+                    log.Cell(row, 6).Value = end;
+                    log.Cell(row, 6).Style.NumberFormat.Format = "h:mm:ss AM/PM";
                 }
                 else
                 {
-                    log.Cell(row, 5).Value = "Working now";
+                    log.Cell(row, 6).Value = "Working now";
                 }
-                SetDuration(log.Cell(row, 6), Duration(e));
+                SetDuration(log.Cell(row, 7), Duration(e));
                 row++;
             }
             if (entries.Count > 0)
@@ -165,6 +184,44 @@ namespace F9SDMS.Services
                 log.Range(1, 1, row - 1, headers.Length).SetAutoFilter();
             }
             log.Columns().AdjustToContents();
+
+            // ---- Check history
+            var submissions = await db.CheckSubmissions
+                .AsNoTracking()
+                .Where(c => c.ProjectId == projectId)
+                .OrderBy(c => c.SubmittedAt)
+                .ToListAsync();
+            var checks = wb.Worksheets.Add("Check history");
+            var checkHeaders = new[] { "Sub-category", "Round", "Submitted by", "Submitted", "PDF", "Note", "Checker", "Result", "Checked", "Comments", "Marked-up PDF" };
+            for (var c = 0; c < checkHeaders.Length; c++) checks.Cell(1, c + 1).Value = checkHeaders[c];
+            StyleHeader(checks.Range(1, 1, 1, checkHeaders.Length));
+
+            row = 2;
+            foreach (var c in submissions)
+            {
+                checks.Cell(row, 1).Value = c.SubcategoryId is null ? "Whole project" : SubName(c.SubcategoryId);
+                checks.Cell(row, 2).Value = c.Round;
+                checks.Cell(row, 3).Value = PersonName(c.SubmittedById);
+                checks.Cell(row, 4).Value = c.SubmittedAt;
+                checks.Cell(row, 4).Style.NumberFormat.Format = "mmm d, yyyy h:mm AM/PM";
+                checks.Cell(row, 5).Value = c.PdfFileName;
+                checks.Cell(row, 6).Value = c.Note ?? "";
+                checks.Cell(row, 7).Value = c.CheckerId is null ? "" : PersonName(c.CheckerId);
+                checks.Cell(row, 8).Value = c.Result ?? (c.CheckerId is null ? "Waiting" : "Being checked");
+                if (c.ResultAt is DateTime checkedAt)
+                {
+                    checks.Cell(row, 9).Value = checkedAt;
+                    checks.Cell(row, 9).Style.NumberFormat.Format = "mmm d, yyyy h:mm AM/PM";
+                }
+                checks.Cell(row, 10).Value = c.Comments ?? "";
+                checks.Cell(row, 11).Value = c.MarkupFileName ?? "";
+                row++;
+            }
+            checks.Columns().AdjustToContents();
+            checks.Column(6).Width = Math.Min(checks.Column(6).Width, 50);
+            checks.Column(10).Width = Math.Min(checks.Column(10).Width, 60);
+            checks.Column(6).Style.Alignment.WrapText = true;
+            checks.Column(10).Style.Alignment.WrapText = true;
 
             using var stream = new MemoryStream();
             wb.SaveAs(stream);

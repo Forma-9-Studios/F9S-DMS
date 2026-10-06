@@ -10,6 +10,7 @@ namespace F9SDMS.Data
         public DbSet<ProjectAssignment> ProjectAssignments => Set<ProjectAssignment>();
         public DbSet<ProjectTimeEntry> ProjectTimeEntries => Set<ProjectTimeEntry>();
         public DbSet<ProjectSubcategory> ProjectSubcategories => Set<ProjectSubcategory>();
+        public DbSet<CheckSubmission> CheckSubmissions => Set<CheckSubmission>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -29,6 +30,25 @@ namespace F9SDMS.Data
                 .HasOne(t => t.Subcategory)
                 .WithMany()
                 .HasForeignKey(t => t.SubcategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Existing rows get these values when the columns are added.
+            builder.Entity<ProjectAssignment>()
+                .Property(a => a.Role)
+                .HasDefaultValue(ProjectOptions.RoleEngineer);
+            builder.Entity<ProjectTimeEntry>()
+                .Property(t => t.WorkType)
+                .HasDefaultValue(ProjectOptions.WorkModeling);
+            builder.Entity<ProjectSubcategory>()
+                .Property(s => s.Status)
+                .HasDefaultValue(ProjectOptions.StatusInProgress);
+
+            builder.Entity<CheckSubmission>().HasIndex(c => new { c.ProjectId, c.SubcategoryId });
+            builder.Entity<CheckSubmission>().HasIndex(c => c.CheckerId);
+            builder.Entity<CheckSubmission>()
+                .HasOne(c => c.Subcategory)
+                .WithMany()
+                .HasForeignKey(c => c.SubcategoryId)
                 .OnDelete(DeleteBehavior.SetNull);
         }
     }

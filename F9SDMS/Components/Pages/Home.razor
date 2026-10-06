@@ -76,7 +76,7 @@
 
         @if (!isAdmin)
         {
-            <div class="employee-grid @(myProjects.Count > 0 ? "has-projects" : "")">
+            <div class="employee-grid @(myProjects.Count > 0 || toCheck.Count > 0 ? "has-projects" : "")">
             <div class="timer-card">
                 <div class="timer-status">
                     @if (clockInTime.HasValue)
@@ -114,7 +114,14 @@
                 <div class="status-row">
                     <div>
                         <div class="status-row-label">Current status</div>
-                        @if (CurrentProject is not null)
+                        @if (currentCheckId is not null && currentProjectId is int checkingProjectId)
+                        {
+                            <a href="/projects/@checkingProjectId" class="current-project-link checking">
+                                <span class="current-project-title">@currentStatus</span>
+                                <span class="current-project-meta">@(CurrentCheck is null ? "" : $"Round {CurrentCheck.Round} · ")Logged as Checking hours</span>
+                            </a>
+                        }
+                        else if (CurrentProject is not null)
                         {
                             <a href="/projects/@CurrentProject.Id" class="current-project-link">
                                 <span class="current-project-title">@CurrentProject.Code · @CurrentProject.Sample@(CurrentSubName is null ? "" : " › " + CurrentSubName)</span>
@@ -135,6 +142,24 @@
                         @if (showStatusDropdown)
                         {
                             <div class="status-dropdown">
+                                @if (toCheck.Count > 0)
+                                {
+                                    <div class="status-dropdown-section">To check</div>
+                                    @foreach (var item in toCheck)
+                                    {
+                                        <div class="status-dropdown-item @(currentCheckId == item.SubmissionId ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => StartChecking(item)">
+                                            @item.Title
+                                        </div>
+                                    }
+                                    @if (myProjects.Count == 0)
+                                    {
+                                        if (!clockInTime.HasValue)
+                                        {
+                                            <div class="status-dropdown-note">Clock in to start checking.</div>
+                                        }
+                                        <div class="status-dropdown-section">Other</div>
+                                    }
+                                }
                                 @if (myProjects.Count > 0)
                                 {
                                     <div class="status-dropdown-section">My projects</div>
@@ -146,15 +171,24 @@
                                             <div class="status-dropdown-group">@project.Code · @project.Sample</div>
                                             @foreach (var sub in project.Subcategories)
                                             {
-                                                <div class="status-dropdown-item status-dropdown-sub @(currentSubcategoryId == sub.Id ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => SetProjectStatus(project, sub.Id)">
+                                                var subLocked = ProjectOptions.IsLocked(sub.Status);
+                                                <div class="status-dropdown-item status-dropdown-sub @(currentCheckId is null && currentSubcategoryId == sub.Id ? "current" : "") @(clockInTime.HasValue && !subLocked ? "" : "disabled")" @onclick="() => SetProjectStatus(project, sub.Id)">
                                                     @sub.Name
+                                                    @if (subLocked)
+                                                    {
+                                                        <span class="status-dropdown-lock">@sub.Status</span>
+                                                    }
                                                 </div>
                                             }
                                         }
                                         else
                                         {
-                                            <div class="status-dropdown-item @(currentProjectId == project.Id && currentSubcategoryId is null ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => SetProjectStatus(project, null)">
+                                            <div class="status-dropdown-item @(currentCheckId is null && currentProjectId == project.Id && currentSubcategoryId is null ? "current" : "") @(clockInTime.HasValue && !project.Locked ? "" : "disabled")" @onclick="() => SetProjectStatus(project, null)">
                                                 @project.Code · @project.Sample
+                                                @if (project.Locked)
+                                                {
+                                                    <span class="status-dropdown-lock">@project.Status</span>
+                                                }
                                             </div>
                                         }
                                     }
@@ -196,9 +230,52 @@
                 </div>
             </div>
 
-            @if (myProjects.Count > 0)
+            @if (myProjects.Count > 0 || toCheck.Count > 0)
             {
                 <div class="my-projects-column">
+                @if (!string.IsNullOrEmpty(checkMessage))
+                {
+                    <div class="check-message @(checkMessageIsError ? "error" : "")" role="status">@checkMessage</div>
+                }
+                @if (toCheck.Count > 0)
+                {
+                    <h2 class="section-title">To check <span class="to-check-count">@toCheck.Count</span></h2>
+                    <div class="to-check-list">
+                        @foreach (var item in toCheck)
+                        {
+                            var isCurrent = currentCheckId == item.SubmissionId;
+                            <div class="to-check-card @(isCurrent ? "current" : "")">
+                                <div class="my-project-top">
+                                    <div>
+                                        <div class="my-project-code">@item.ProjectCode · Round @item.Round</div>
+                                        <a href="/projects/@item.ProjectId" class="to-check-title">@item.Sample@(item.PartName is null ? "" : " › " + item.PartName)</a>
+                                    </div>
+                                    <span class="project-status @(item.IsStarted ? "status-checking" : "status-for-checking")">@(item.IsStarted ? "Checking" : "For Checking")</span>
+                                </div>
+                                <div class="to-check-meta">Submitted by <strong>@item.SubmittedByName</strong> · @item.SubmittedAt.ToString("MMM d, h:mm tt")</div>
+                                @if (!string.IsNullOrEmpty(item.Note))
+                                {
+                                    <div class="to-check-note">“@item.Note”</div>
+                                }
+                                <div class="to-check-actions">
+                                    <a href="/checks/@item.SubmissionId/pdf" target="_blank" rel="noopener" class="to-check-pdf">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                                        @item.PdfFileName · @F9SDMS.Services.CheckFileStore.FormatSize(item.PdfSize)
+                                    </a>
+                                    <div class="to-check-buttons">
+                                        @if (!isCurrent)
+                                        {
+                                            <button type="button" class="to-check-start" @onclick="() => StartChecking(item)" disabled="@(!clockInTime.HasValue)" title="@(clockInTime.HasValue ? "Set your status to checking this" : "Clock in to start checking")">Start checking</button>
+                                        }
+                                        <button type="button" class="to-check-review" @onclick="() => OpenReview(item)">Approve / Return</button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (myProjects.Count > 0)
+                {
                 <h2 class="section-title">My Projects</h2>
                 <div class="my-projects">
                     @foreach (var project in myProjects)
@@ -216,7 +293,8 @@
                                 <div class="my-project-subs">
                                     @foreach (var sub in project.Subcategories)
                                     {
-                                        <span class="my-project-sub @(currentSubcategoryId == sub.Id ? "current" : "")">@sub.Name@(currentSubcategoryId == sub.Id ? " · working now" : "")</span>
+                                        var workingOnSub = currentCheckId is null && currentSubcategoryId == sub.Id;
+                                        <span class="my-project-sub @(workingOnSub ? "current" : "") @(sub.Status == ProjectOptions.StatusInProgress ? "" : "part-" + ProjectOptions.StatusCss(sub.Status))">@sub.Name@(workingOnSub ? " · working now" : sub.Status == ProjectOptions.StatusInProgress ? "" : " · " + sub.Status.ToLowerInvariant())</span>
                                     }
                                 </div>
                             }
@@ -225,6 +303,7 @@
                         </a>
                     }
                 </div>
+                }
                 </div>
             }
             </div>
@@ -337,6 +416,11 @@
         </div>
     }
 
+    @if (reviewItem is not null && currentUserId is not null)
+    {
+        <CheckReviewDialog Item="reviewItem" CheckerId="@currentUserId" OnClose="OnReviewClosed" />
+    }
+
     @if (editingEmployee is not null)
     {
         <div class="modal-overlay">
@@ -413,6 +497,14 @@
     private bool showStatusDropdown = false;
     private string customStatusInput = "";
 
+    // Checking: submissions waiting for this person, and the one they're checking now.
+    private List<F9SDMS.Services.CheckQueueItem> toCheck = new();
+    private int? currentCheckId;
+    private F9SDMS.Services.CheckQueueItem? CurrentCheck => currentCheckId is int cid ? toCheck.FirstOrDefault(x => x.SubmissionId == cid) : null;
+    private F9SDMS.Services.CheckQueueItem? reviewItem;
+    private string? checkMessage;
+    private bool checkMessageIsError;
+
     private readonly string[] presetStatuses = { "Assist Colleague", "Break", "Email", "Idle", "IT Maintenance", "Meeting", "Timesheet" };
 
     private const string AvailableStatus = "Available";
@@ -474,6 +566,7 @@
                 currentStatus = string.IsNullOrWhiteSpace(user.CurrentStatus) ? "Available" : user.CurrentStatus;
                 currentProjectId = user.CurrentProjectId;
                 currentSubcategoryId = user.CurrentSubcategoryId;
+                currentCheckId = user.CurrentCheckId;
 
                 if (!string.IsNullOrWhiteSpace(user.FirstName))
                 {
@@ -627,6 +720,7 @@
                 {
                     currentProjectId = null;
                     currentSubcategoryId = null;
+                    currentCheckId = null;
                     currentStatus = AvailableStatus;
                 }
             }
@@ -659,6 +753,7 @@
                 currentStatus = string.IsNullOrWhiteSpace(freshUser.CurrentStatus) ? AvailableStatus : freshUser.CurrentStatus;
                 currentProjectId = freshUser.CurrentProjectId;
                 currentSubcategoryId = freshUser.CurrentSubcategoryId;
+                currentCheckId = freshUser.CurrentCheckId;
             }
 
             if (canViewTeamStatus)
@@ -734,6 +829,7 @@
         currentStatus = status;
         currentProjectId = null;
         currentSubcategoryId = null;
+        currentCheckId = null;
         showStatusDropdown = false;
 
         if (currentUserId is not null)
@@ -747,6 +843,7 @@
                     user.CurrentStatus = status;
                     user.CurrentProjectId = null;
                     user.CurrentSubcategoryId = null;
+                    user.CurrentCheckId = null;
                     await db.SaveChangesAsync();
                 }
 
@@ -771,11 +868,14 @@
 
         // Project time only counts while clocked in; picking what you're already on does nothing.
         if (currentUserId is null || !clockInTime.HasValue) return;
-        if (currentProjectId == project.Id && currentSubcategoryId == subcategoryId) return;
+        if (currentCheckId is null && currentProjectId == project.Id && currentSubcategoryId == subcategoryId) return;
 
         // A project with sub-categories must be worked on through one of them.
         var sub = subcategoryId is int sid ? project.Subcategories.FirstOrDefault(x => x.Id == sid) : null;
         if (project.Subcategories.Count > 0 && sub is null) return;
+
+        // Parts being checked (or already approved) are locked.
+        if (sub is not null ? ProjectOptions.IsLocked(sub.Status) : project.Locked) return;
 
         var status = sub is null
             ? $"{project.Code} · {project.Sample}"
@@ -783,12 +883,24 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Re-check the lock against the database in case it was submitted a moment ago.
+            var locked = sub is not null
+                ? await db.ProjectSubcategories.AnyAsync(x => x.Id == sub.Id && (x.IsArchived || x.Status == ProjectOptions.StatusForChecking || x.Status == ProjectOptions.StatusApproved))
+                : await db.Projects.AnyAsync(p => p.Id == project.Id && (p.Status == ProjectOptions.StatusForChecking || p.Status == ProjectOptions.StatusCompleted));
+            if (locked)
+            {
+                await LoadMyProjects();
+                return;
+            }
+
             var user = await db.Users.FirstOrDefaultAsync(u => u.Id == currentUserId);
             if (user is not null)
             {
                 user.CurrentStatus = status;
                 user.CurrentProjectId = project.Id;
                 user.CurrentSubcategoryId = sub?.Id;
+                user.CurrentCheckId = null;
                 await db.SaveChangesAsync();
             }
 
@@ -797,6 +909,7 @@
             currentStatus = status;
             currentProjectId = project.Id;
             currentSubcategoryId = sub?.Id;
+            currentCheckId = null;
             await LoadMyProjects();
         }
         catch (Exception ex)
@@ -822,9 +935,27 @@
             var projects = await db.Projects
                 .AsNoTracking()
                 .Include(p => p.Subcategories)
-                .Where(p => p.Status != ProjectOptions.StatusCompleted && p.Assignments.Any(a => a.EmployeeId == userId))
+                .Where(p => p.Status != ProjectOptions.StatusCompleted
+                    && p.Assignments.Any(a => a.EmployeeId == userId && a.Role == ProjectOptions.RoleEngineer))
                 .OrderBy(p => p.DueDate)
                 .ToListAsync();
+
+            toCheck = await F9SDMS.Services.ProjectChecking.GetQueueAsync(db, userId);
+
+            // Pick up status changes made elsewhere (e.g. a part was submitted for checking,
+            // or a check was finished on another tab).
+            var fresh = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => new { u.CurrentStatus, u.CurrentProjectId, u.CurrentSubcategoryId, u.CurrentCheckId })
+                .FirstOrDefaultAsync();
+            if (fresh is not null)
+            {
+                currentStatus = string.IsNullOrWhiteSpace(fresh.CurrentStatus) ? AvailableStatus : fresh.CurrentStatus;
+                currentProjectId = fresh.CurrentProjectId;
+                currentSubcategoryId = fresh.CurrentSubcategoryId;
+                currentCheckId = fresh.CurrentCheckId;
+            }
 
             myProjects = projects.Select(p => new MyProject
             {
@@ -834,17 +965,70 @@
                 Status = p.Status,
                 DueDate = p.DueDate,
                 DueSoon = p.DueDate.Date <= today.AddDays(3),
+                Locked = ProjectOptions.IsLocked(p.Status),
                 Meta = string.Join(" · ", new[] { p.Category, p.Lod }.Where(x => !string.IsNullOrWhiteSpace(x))),
                 Subcategories = p.Subcategories
                     .Where(x => !x.IsArchived)
                     .OrderBy(x => x.Id)
-                    .Select(x => new MySubcategory(x.Id, x.Name))
+                    .Select(x => new MySubcategory(x.Id, x.Name, x.Status))
                     .ToList()
             }).ToList();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Could not load assigned projects.");
+        }
+    }
+
+    private async Task StartChecking(F9SDMS.Services.CheckQueueItem item)
+    {
+        showStatusDropdown = false;
+        checkMessage = null;
+        if (currentUserId is null || !clockInTime.HasValue) return;
+        if (currentCheckId == item.SubmissionId) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var result = await F9SDMS.Services.ProjectChecking.StartCheckingAsync(db, currentUserId, item.SubmissionId, Clock.Now);
+            if (!result.Ok)
+            {
+                checkMessage = result.Error;
+                checkMessageIsError = true;
+            }
+            await LoadMyProjects();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not start checking.");
+            checkMessage = "Couldn't start checking. Please try again.";
+            checkMessageIsError = true;
+        }
+
+        if (canViewTeamStatus)
+        {
+            await LoadEmployees();
+        }
+    }
+
+    private void OpenReview(F9SDMS.Services.CheckQueueItem item)
+    {
+        checkMessage = null;
+        reviewItem = item;
+    }
+
+    private async Task OnReviewClosed(string? message)
+    {
+        reviewItem = null;
+        if (message is not null)
+        {
+            checkMessage = message;
+            checkMessageIsError = false;
+            await LoadMyProjects();
+            if (canViewTeamStatus)
+            {
+                await LoadEmployees();
+            }
         }
     }
 
@@ -1041,10 +1225,13 @@
         public DateTime DueDate { get; set; }
         public bool DueSoon { get; set; }
         public string Meta { get; set; } = "";
+
+        /// <summary>A project without sub-categories that is being checked or is done.</summary>
+        public bool Locked { get; set; }
         public List<MySubcategory> Subcategories { get; set; } = new();
     }
 
-    private sealed record MySubcategory(int Id, string Name);
+    private sealed record MySubcategory(int Id, string Name, string Status);
 
     private string GetInitials(string firstName, string lastName)
     {

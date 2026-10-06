@@ -1085,3 +1085,229 @@
         background: rgba(20, 163, 173, 0.2);
         color: #5fd3da;
     }
+
+/* ---- Project checking ---- */
+.current-project-link.checking {
+    background: rgba(110, 86, 207, 0.22);
+    border-color: rgba(160, 135, 255, 0.55);
+}
+
+    .current-project-link.checking:hover {
+        background: rgba(110, 86, 207, 0.32);
+    }
+
+    .current-project-link.checking .current-project-meta {
+        color: #c4b0ff;
+    }
+
+.status-dropdown-lock {
+    margin-left: 10px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #c6d3dc;
+    white-space: nowrap;
+}
+
+.check-message {
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #e3f4ea;
+    color: #1d6b3f;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.check-message.error {
+    background: #fbe4e1;
+    color: #8f2f28;
+}
+
+.to-check-count {
+    margin-left: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: #ece8fb;
+    color: #5a45b8;
+    font-size: 12px;
+    vertical-align: middle;
+}
+
+.to-check-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 28px;
+}
+
+.to-check-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e9eb;
+    color: #0c1a27;
+    box-shadow: 0 4px 12px -4px rgba(12, 26, 39, 0.08);
+}
+
+    .to-check-card.current {
+        border-color: #6e56cf;
+        box-shadow: 0 0 0 2px rgba(110, 86, 207, 0.25);
+    }
+
+.to-check-title {
+    display: block;
+    margin-top: 2px;
+    font-size: 16px;
+    font-weight: 700;
+    color: inherit;
+    text-decoration: none;
+}
+
+    .to-check-title:hover {
+        text-decoration: underline;
+    }
+
+.to-check-meta {
+    font-size: 12.5px;
+    color: #606060;
+}
+
+    .to-check-meta strong {
+        color: #0c1a27;
+    }
+
+.to-check-note {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border-left: 3px solid #c9bdf2;
+    background: #f6f8f9;
+    font-size: 12.5px;
+    color: #3d4f5c;
+}
+
+.to-check-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.to-check-pdf {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #098993;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+    .to-check-pdf:hover {
+        text-decoration: underline;
+    }
+
+.to-check-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.to-check-start,
+.to-check-review {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: none;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.to-check-start {
+    background: #098993;
+}
+
+    .to-check-start:hover:not(:disabled) {
+        background: #076e76;
+    }
+
+    .to-check-start:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
+
+.to-check-review {
+    background: #6e56cf;
+}
+
+    .to-check-review:hover {
+        background: #5a45b8;
+    }
+
+.status-checking { background: #ece8fb; color: #5a45b8; }
+.status-returned { background: #fbe4e1; color: #a5372f; }
+
+.my-project-sub.part-for-checking { background: #e2ecfb; color: #2a5ea8; }
+.my-project-sub.part-returned { background: #fbe4e1; color: #a5372f; }
+.my-project-sub.part-completed { background: #e3f4ea; color: #1d6b3f; }
+
+.dark-mode .dashboard-page .check-message {
+    background: #12261f;
+    color: #7fdca0;
+}
+
+.dark-mode .dashboard-page .check-message.error {
+    background: #4d2222;
+    color: #ffbdb5;
+}
+
+.dark-mode .dashboard-page .to-check-count {
+    background: #33285a;
+    color: #c4b0ff;
+}
+
+.dark-mode .dashboard-page .to-check-card {
+    background: #131f2e;
+    border-color: #223244;
+    color: #e8edf0;
+    box-shadow: none;
+}
+
+    .dark-mode .dashboard-page .to-check-card.current {
+        border-color: #a087ff;
+    }
+
+.dark-mode .dashboard-page .to-check-meta {
+    color: #8b98a3;
+}
+
+    .dark-mode .dashboard-page .to-check-meta strong {
+        color: #e8edf0;
+    }
+
+.dark-mode .dashboard-page .to-check-note {
+    background: #0f1c29;
+    border-left-color: #4a3d80;
+    color: #c6d3dc;
+}
+
+.dark-mode .dashboard-page .to-check-pdf {
+    color: #5fd3da;
+}
+
+.dark-mode .dashboard-page .status-checking { background: #33285a; color: #c4b0ff; }
+.dark-mode .dashboard-page .status-returned { background: #4d2222; color: #ff9d92; }
+
+.dark-mode .dashboard-page .my-project-sub.part-for-checking { background: #1c3560; color: #8db8f2; }
+.dark-mode .dashboard-page .my-project-sub.part-returned { background: #4d2222; color: #ff9d92; }
+.dark-mode .dashboard-page .my-project-sub.part-completed { background: #16452e; color: #6fd39b; }

@@ -1,0 +1,165 @@
+﻿@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject CheckFileStore Store
+@inject IAppClock Clock
+@inject ILogger<CheckReviewDialog> Logger
+
+<div class="check-modal-overlay">
+    <div class="check-modal" role="dialog" aria-labelledby="reviewCheckTitle">
+        <div class="check-modal-header review">
+            <h2 id="reviewCheckTitle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+                Review · @Item.Title · Round @Item.Round
+            </h2>
+            <button type="button" class="check-modal-close" aria-label="Close" @onclick="Cancel" disabled="@busy">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+            </button>
+        </div>
+
+        <div class="check-modal-body">
+            <div class="check-submission">
+                <div class="check-submission-top">
+                    <span>Submitted by <strong>@Item.SubmittedByName</strong> · @Item.SubmittedAt.ToString("MMM d, h:mm tt")</span>
+                    <a href="/checks/@Item.SubmissionId/pdf" target="_blank" rel="noopener" class="check-pdf-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                        @Item.PdfFileName
+                    </a>
+                </div>
+                @if (!string.IsNullOrEmpty(Item.Note))
+                {
+                    <div class="check-submission-note">“@Item.Note”</div>
+                }
+            </div>
+
+            <div class="check-field">
+                <span class="check-label">Result <span class="req">*</span></span>
+                <div class="check-result-options" role="radiogroup">
+                    <button type="button" role="radio" aria-checked="@(approve == true ? "true" : "false")" class="check-result approve @(approve == true ? "selected" : "")" @onclick="() => approve = true" disabled="@busy">
+                        <span class="check-result-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12" /></svg></span>
+                        <span><span class="check-result-title">Approve</span><span class="check-result-sub">@(Item.PartName ?? "The project") is done</span></span>
+                    </button>
+                    <button type="button" role="radio" aria-checked="@(approve == false ? "true" : "false")" class="check-result return @(approve == false ? "selected" : "")" @onclick="() => approve = false" disabled="@busy">
+                        <span class="check-result-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 14 4 9 9 4" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" /></svg></span>
+                        <span><span class="check-result-title">Return for revision</span><span class="check-result-sub">Unlocks it for @FirstName(Item.SubmittedByName)</span></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="check-field">
+                <label for="checkComments" class="check-label">Comments @if (approve == false) { <span class="req">*</span> } <span class="check-optional">@(approve == false ? "(required when returning)" : "(optional)")</span></label>
+                <textarea id="checkComments" class="check-input" rows="3" maxlength="4000" placeholder="What needs fixing, with page or grid references…" @bind="comments" disabled="@busy"></textarea>
+            </div>
+
+            <div class="check-field">
+                <span class="check-label">Marked-up PDF <span class="check-optional">(optional, up to 50 MB)</span></span>
+                <PdfPicker @bind-Value="markup" Disabled="@busy" />
+            </div>
+
+            <div class="check-hint">Your time on this check is saved as <strong>Checking</strong> hours. Your status goes back to Available when you finish.</div>
+
+            @if (error is not null)
+            {
+                <div class="check-error" role="alert">@error</div>
+            }
+        </div>
+
+        <div class="check-modal-footer">
+            <button type="button" class="check-btn-cancel" @onclick="Cancel" disabled="@busy">Cancel</button>
+            @if (approve == false)
+            {
+                <button type="button" class="check-btn-danger" @onclick="Finish" disabled="@busy">
+                    @(busy ? "Saving…" : $"Return to {FirstName(Item.SubmittedByName)}")
+                </button>
+            }
+            else
+            {
+                <button type="button" class="check-btn-primary" @onclick="Finish" disabled="@(busy || approve is null)">
+                    @(busy ? "Saving…" : "Approve")
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CheckQueueItem Item { get; set; } = default!;
+    [Parameter, EditorRequired] public string CheckerId { get; set; } = "";
+
+    /// <summary>Called with a success message, or null when cancelled.</summary>
+    [Parameter] public EventCallback<string?> OnClose { get; set; }
+
+    private bool? approve;
+    private string comments = "";
+    private IBrowserFile? markup;
+    private string? error;
+    private bool busy;
+
+    private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+
+    private async Task Cancel()
+    {
+        if (busy) return;
+        await OnClose.InvokeAsync(null);
+    }
+
+    private async Task Finish()
+    {
+        if (busy) return;
+        error = null;
+
+        if (approve is not bool isApproval)
+        {
+            error = "Choose Approve or Return for revision.";
+            return;
+        }
+        if (!isApproval && string.IsNullOrWhiteSpace(comments))
+        {
+            error = "Add comments so the engineer knows what to fix.";
+            return;
+        }
+
+        busy = true;
+        string? storedName = null;
+        try
+        {
+            long? markupSize = null;
+            if (markup is not null)
+            {
+                await using var stream = markup.OpenReadStream(CheckFileStore.MaxBytes);
+                var saved = await Store.SaveAsync(stream);
+                storedName = saved.StoredName;
+                markupSize = saved.Size;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var result = await ProjectChecking.CompleteAsync(db, CheckerId, Item.SubmissionId, isApproval, comments,
+                markup?.Name, storedName, markupSize, Clock.Now);
+            if (!result.Ok)
+            {
+                Store.Delete(storedName);
+                error = result.Error;
+                return;
+            }
+
+            await OnClose.InvokeAsync(isApproval
+                ? $"{Item.Title} was approved."
+                : $"{Item.Title} was returned to {Item.SubmittedByName}.");
+        }
+        catch (InvalidDataException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Store.Delete(storedName);
+            Logger.LogError(ex, "Saving the check result failed.");
+            error = "Couldn't save the result. Please try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

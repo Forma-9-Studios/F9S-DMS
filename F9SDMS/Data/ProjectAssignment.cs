@@ -2,7 +2,7 @@
 
 namespace F9SDMS.Data
 {
-    /// <summary>Links a project to one assigned BIM engineer / architect.</summary>
+    /// <summary>Links a project to one assigned BIM engineer / architect, or to one of its checkers.</summary>
     public class ProjectAssignment
     {
         [Key]
@@ -14,5 +14,9 @@ namespace F9SDMS.Data
 
         [Required]
         public string EmployeeId { get; set; } = string.Empty;
+
+        /// <summary><see cref="ProjectOptions.RoleEngineer"/> or <see cref="ProjectOptions.RoleChecker"/>.</summary>
+        [Required, MaxLength(20)]
+        public string Role { get; set; } = ProjectOptions.RoleEngineer;
     }
 }

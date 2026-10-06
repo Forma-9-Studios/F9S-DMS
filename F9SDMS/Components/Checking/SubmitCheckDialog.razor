@@ -1,0 +1,171 @@
+﻿@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject CheckFileStore Store
+@inject IAppClock Clock
+@inject ILogger<SubmitCheckDialog> Logger
+
+<div class="check-modal-overlay">
+    <div class="check-modal" role="dialog" aria-labelledby="submitCheckTitle">
+        <div class="check-modal-header">
+            <h2 id="submitCheckTitle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+                Submit for checking
+            </h2>
+            <button type="button" class="check-modal-close" aria-label="Close" @onclick="Cancel" disabled="@busy">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+            </button>
+        </div>
+
+        <div class="check-modal-body">
+            <div class="check-grid">
+                <div class="check-field">
+                    <span class="check-label">Project</span>
+                    <div class="check-readonly">@ProjectTitle</div>
+                </div>
+                @if (HasSubcategories)
+                {
+                    <div class="check-field">
+                        <label for="checkPart" class="check-label">Sub-category <span class="req">*</span></label>
+                        <select id="checkPart" class="check-input" @bind="selectedPart" disabled="@busy">
+                            @foreach (var part in Parts)
+                            {
+                                <option value="@part.Id">@part.Name</option>
+                            }
+                        </select>
+                        @if (!string.IsNullOrEmpty(LockedNote))
+                        {
+                            <span class="check-hint">@LockedNote</span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="check-field">
+                <span class="check-label">PDF for checking <span class="req">*</span></span>
+                <PdfPicker @bind-Value="file" Disabled="@busy" />
+            </div>
+
+            <div class="check-field">
+                <label for="checkNote" class="check-label">Note for the checker <span class="check-optional">(optional)</span></label>
+                <textarea id="checkNote" class="check-input" rows="3" maxlength="2000" placeholder="What changed, what to look at…" @bind="note" disabled="@busy"></textarea>
+            </div>
+
+            <div class="check-callout">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                <span><strong>@SelectedName</strong> will be locked while it's being checked. Nobody can pick it as their status until the checker returns it, and anyone working on it now is stopped.</span>
+            </div>
+
+            <div class="check-hint">@(CheckerNames.Contains(',') ? "Checkers" : "Checker") for this project: <strong>@(string.IsNullOrEmpty(CheckerNames) ? "none yet" : CheckerNames)</strong></div>
+
+            @if (error is not null)
+            {
+                <div class="check-error" role="alert">@error</div>
+            }
+        </div>
+
+        <div class="check-modal-footer">
+            <button type="button" class="check-btn-cancel" @onclick="Cancel" disabled="@busy">Cancel</button>
+            <button type="button" class="check-btn-primary" @onclick="Submit" disabled="@busy">
+                @(busy ? "Uploading…" : "Submit for checking")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>A part the engineer can submit; Id is null for a project without sub-categories.</summary>
+    public sealed record SubmitPart(int? Id, string Name);
+
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    [Parameter, EditorRequired] public string EmployeeId { get; set; } = "";
+    [Parameter, EditorRequired] public string ProjectTitle { get; set; } = "";
+    [Parameter, EditorRequired] public IReadOnlyList<SubmitPart> Parts { get; set; } = Array.Empty<SubmitPart>();
+    [Parameter] public int? InitialPartId { get; set; }
+    [Parameter] public string CheckerNames { get; set; } = "";
+
+    /// <summary>Explains why some sub-categories aren't listed.</summary>
+    [Parameter] public string? LockedNote { get; set; }
+
+    /// <summary>Called with a success message, or null when cancelled.</summary>
+    [Parameter] public EventCallback<string?> OnClose { get; set; }
+
+    private IBrowserFile? file;
+    private string note = "";
+    private string? selectedPart;
+    private string? error;
+    private bool busy;
+
+    private bool HasSubcategories => Parts.Any(p => p.Id is not null);
+
+    private SubmitPart? SelectedPartInfo => HasSubcategories
+        ? Parts.FirstOrDefault(p => p.Id?.ToString() == selectedPart)
+        : Parts.FirstOrDefault();
+
+    private string SelectedName => SelectedPartInfo?.Name ?? "This part";
+
+    protected override void OnInitialized()
+    {
+        var initial = Parts.FirstOrDefault(p => p.Id == InitialPartId) ?? Parts.FirstOrDefault();
+        selectedPart = initial?.Id?.ToString();
+    }
+
+    private async Task Cancel()
+    {
+        if (busy) return;
+        await OnClose.InvokeAsync(null);
+    }
+
+    private async Task Submit()
+    {
+        if (busy) return;
+        error = null;
+
+        var part = SelectedPartInfo;
+        if (part is null)
+        {
+            error = "There's nothing to submit.";
+            return;
+        }
+        if (file is null)
+        {
+            error = "Attach the PDF to be checked.";
+            return;
+        }
+
+        busy = true;
+        string? storedName = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(CheckFileStore.MaxBytes);
+            var saved = await Store.SaveAsync(stream);
+            storedName = saved.StoredName;
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var result = await ProjectChecking.SubmitAsync(db, EmployeeId, ProjectId, part.Id, file.Name, saved.StoredName, saved.Size, note, Clock.Now);
+            if (!result.Ok)
+            {
+                Store.Delete(storedName);
+                error = result.Error;
+                return;
+            }
+
+            await OnClose.InvokeAsync($"{part.Name} was submitted for checking.");
+        }
+        catch (InvalidDataException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Store.Delete(storedName);
+            Logger.LogError(ex, "Submitting for checking failed.");
+            error = "Couldn't upload the PDF. Please try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

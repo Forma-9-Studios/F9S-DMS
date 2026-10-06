@@ -75,6 +75,7 @@
                         @foreach (var p in Filtered)
                         {
                             var assignees = p.Assignments
+                                .Where(a => a.Role != ProjectOptions.RoleChecker)
                                 .Select(a => peopleById.TryGetValue(a.EmployeeId, out var person) ? person : null)
                                 .Where(person => person is not null)
                                 .Select(person => person!)
@@ -112,6 +113,16 @@
                                             </div>
                                             <span>@(assignees.Count == 1 ? assignees[0].Name : $"{assignees.Count} people")</span>
                                         </div>
+                                    }
+                                    @{
+                                        var checkers = p.Assignments
+                                            .Where(a => a.Role == ProjectOptions.RoleChecker && peopleById.ContainsKey(a.EmployeeId))
+                                            .Select(a => peopleById[a.EmployeeId].Name)
+                                            .ToList();
+                                    }
+                                    @if (checkers.Count > 0)
+                                    {
+                                        <div class="checker-line">Checker: @string.Join(", ", checkers)</div>
                                     }
                                 </td>
                                 <td class="@(IsDueSoon(p) ? "due-soon" : "")">@p.DueDate.ToString("MMM d, yyyy")</td>
@@ -242,13 +253,41 @@
                                 }
                                 <select id="pAssignee" class="chip-select" @key="assigneePickerKey" @onchange="AddAssignee">
                                     <option value="">Add engineer or architect…</option>
-                                    @foreach (var person in assignable.Where(x => !editor.AssigneeIds.Contains(x.Id)))
+                                    @foreach (var person in assignable.Where(x => !editor.AssigneeIds.Contains(x.Id) && !editor.CheckerIds.Contains(x.Id)))
                                     {
                                         <option value="@person.Id">@person.Name</option>
                                     }
                                 </select>
                             </div>
                             <div class="hint">Assigned people see this project in their status and on their dashboard. Leave empty to assign later.</div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="pChecker">Checker</label>
+                            <div class="chip-input">
+                                @foreach (var id in editor.CheckerIds.ToList())
+                                {
+                                    if (!peopleById.TryGetValue(id, out var person))
+                                    {
+                                        continue;
+                                    }
+                                    <span class="chip checker-chip">
+                                        <span class="chip-avatar">@person.Initials</span>
+                                        @person.Name
+                                        <button type="button" class="chip-remove" aria-label="Remove @person.Name" @onclick="() => RemoveChecker(id)">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="14" height="14"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                                        </button>
+                                    </span>
+                                }
+                                <select id="pChecker" class="chip-select" @key="checkerPickerKey" @onchange="AddChecker">
+                                    <option value="">Add checker…</option>
+                                    @foreach (var person in assignable.Where(x => !editor.AssigneeIds.Contains(x.Id) && !editor.CheckerIds.Contains(x.Id)))
+                                    {
+                                        <option value="@person.Id">@person.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="hint">Checkers review the PDFs engineers submit and approve or return each part. Their checking time is logged separately.</div>
                         </div>
 
                         <div class="form-field">
@@ -289,6 +328,7 @@
     // Changing this rebuilds the "Add engineer or architect" dropdown so it always
     // goes back to its placeholder after someone is added or removed.
     private int assigneePickerKey;
+    private int checkerPickerKey;
     private string newSubName = "";
     private string? formError;
     private bool isSaving;
@@ -408,7 +448,8 @@
             DueDate = p.DueDate,
             Notes = p.Notes ?? "",
             Status = p.Status,
-            AssigneeIds = p.Assignments.Select(a => a.EmployeeId).Distinct().ToList()
+            AssigneeIds = p.Assignments.Where(a => a.Role != ProjectOptions.RoleChecker).Select(a => a.EmployeeId).Distinct().ToList(),
+            CheckerIds = p.Assignments.Where(a => a.Role == ProjectOptions.RoleChecker).Select(a => a.EmployeeId).Distinct().ToList()
         };
     }
 
@@ -461,17 +502,38 @@
     private void AddAssignee(ChangeEventArgs e)
     {
         var id = e.Value?.ToString();
-        if (editor is not null && !string.IsNullOrEmpty(id) && !editor.AssigneeIds.Contains(id))
+        if (editor is not null && !string.IsNullOrEmpty(id) && !editor.AssigneeIds.Contains(id) && !editor.CheckerIds.Contains(id))
         {
             editor.AssigneeIds.Add(id);
         }
 
         assigneePickerKey++;
+        checkerPickerKey++;
     }
 
     private void RemoveAssignee(string id)
     {
         editor?.AssigneeIds.Remove(id);
+        assigneePickerKey++;
+        checkerPickerKey++;
+    }
+
+    private void AddChecker(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        if (editor is not null && !string.IsNullOrEmpty(id) && !editor.CheckerIds.Contains(id) && !editor.AssigneeIds.Contains(id))
+        {
+            editor.CheckerIds.Add(id);
+        }
+
+        checkerPickerKey++;
+        assigneePickerKey++;
+    }
+
+    private void RemoveChecker(string id)
+    {
+        editor?.CheckerIds.Remove(id);
+        checkerPickerKey++;
         assigneePickerKey++;
     }
 
@@ -532,16 +594,30 @@
             project.DueDate = editor.DueDate.Value.Date;
             project.Notes = string.IsNullOrWhiteSpace(editor.Notes) ? null : editor.Notes.Trim();
 
-            // Sync assignments.
+            // Sync assignments (engineers and checkers; one role per person).
             var selected = editor.AssigneeIds.Distinct().ToList();
-            var removed = project.Assignments.Where(a => !selected.Contains(a.EmployeeId)).ToList();
-            foreach (var assignment in removed)
+            var checkerIds = editor.CheckerIds.Distinct().Where(id => !selected.Contains(id)).ToList();
+            var roleById = selected.ToDictionary(id => id, _ => ProjectOptions.RoleEngineer);
+            foreach (var id in checkerIds)
+            {
+                roleById[id] = ProjectOptions.RoleChecker;
+            }
+
+            // Removed people, and anyone whose role changed, stop working on the project.
+            var removed = project.Assignments
+                .Where(a => !roleById.TryGetValue(a.EmployeeId, out var role) || role != a.Role)
+                .ToList();
+            foreach (var assignment in removed.Where(a => !roleById.ContainsKey(a.EmployeeId)).ToList())
             {
                 project.Assignments.Remove(assignment);
             }
-            foreach (var id in selected.Where(id => project.Assignments.All(a => a.EmployeeId != id)))
+            foreach (var assignment in project.Assignments)
             {
-                project.Assignments.Add(new ProjectAssignment { EmployeeId = id });
+                assignment.Role = roleById[assignment.EmployeeId];
+            }
+            foreach (var (id, role) in roleById.Where(x => project.Assignments.All(a => a.EmployeeId != x.Key)))
+            {
+                project.Assignments.Add(new ProjectAssignment { EmployeeId = id, Role = role });
             }
 
             // Sync sub-categories. Ones with hours are archived instead of removed.
@@ -565,7 +641,8 @@
                 if (edit.Removed)
                 {
                     var editId = edit.Id;
-                    if (await db.ProjectTimeEntries.AnyAsync(t => t.SubcategoryId == editId))
+                    if (await db.ProjectTimeEntries.AnyAsync(t => t.SubcategoryId == editId)
+                        || await db.CheckSubmissions.AnyAsync(c => c.SubcategoryId == editId))
                     {
                         stored.IsArchived = true;
                     }
@@ -665,6 +742,7 @@
         public string Notes { get; set; } = "";
         public string Status { get; set; } = ProjectOptions.StatusAssigned;
         public List<string> AssigneeIds { get; set; } = new();
+        public List<string> CheckerIds { get; set; } = new();
         public List<SubcategoryEdit> Subcategories { get; set; } = new();
     }
 

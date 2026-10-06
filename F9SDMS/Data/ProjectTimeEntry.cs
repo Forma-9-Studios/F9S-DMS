@@ -23,6 +23,10 @@ namespace F9SDMS.Data
 
         public ProjectSubcategory? Subcategory { get; set; }
 
+        /// <summary><see cref="ProjectOptions.WorkModeling"/> or <see cref="ProjectOptions.WorkChecking"/>.</summary>
+        [Required, MaxLength(20)]
+        public string WorkType { get; set; } = ProjectOptions.WorkModeling;
+
         public DateTime StartTime { get; set; }
 
         public DateTime? EndTime { get; set; }

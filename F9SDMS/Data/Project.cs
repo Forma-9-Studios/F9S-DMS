@@ -39,6 +39,8 @@ namespace F9SDMS.Data
 
         public List<ProjectSubcategory> Subcategories { get; set; } = new();
 
+        public List<CheckSubmission> CheckSubmissions { get; set; } = new();
+
         /// <summary>Display code, e.g. "P-0012". Not stored.</summary>
         public string Code => FormatCode(Id);
 
