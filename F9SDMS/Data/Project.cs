@@ -33,6 +33,9 @@ namespace F9SDMS.Data
 
         public string? CreatedById { get; set; }
 
+        /// <summary>The manager who does the final check. Defaults to whoever created the project.</summary>
+        public string? ManagerId { get; set; }
+
         public List<ProjectAssignment> Assignments { get; set; } = new();
 
         public List<ProjectTimeEntry> TimeEntries { get; set; } = new();
@@ -40,6 +43,8 @@ namespace F9SDMS.Data
         public List<ProjectSubcategory> Subcategories { get; set; } = new();
 
         public List<CheckSubmission> CheckSubmissions { get; set; } = new();
+
+        public List<ProjectTask> Tasks { get; set; } = new();
 
         /// <summary>Display code, e.g. "P-0012". Not stored.</summary>
         public string Code => FormatCode(Id);

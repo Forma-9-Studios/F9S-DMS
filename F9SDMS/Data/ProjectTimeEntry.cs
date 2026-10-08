@@ -23,6 +23,11 @@ namespace F9SDMS.Data
 
         public ProjectSubcategory? Subcategory { get; set; }
 
+        /// <summary>The task worked on (projects with sub-categories).</summary>
+        public int? TaskId { get; set; }
+
+        public ProjectTask? Task { get; set; }
+
         /// <summary><see cref="ProjectOptions.WorkModeling"/> or <see cref="ProjectOptions.WorkChecking"/>.</summary>
         [Required, MaxLength(20)]
         public string WorkType { get; set; } = ProjectOptions.WorkModeling;

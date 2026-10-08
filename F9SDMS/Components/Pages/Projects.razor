@@ -205,25 +205,59 @@
 
                         <div class="sub-section">
                             <div class="sub-header">
-                                <span class="sub-title">Sub-categories</span>
-                                <span class="hint">Optional. When added, employees log time to these instead of the project itself.</span>
+                                <span class="sub-title">Sub-categories and tasks</span>
+                                <span class="hint">Optional. Engineers pick a task as their status, and each task is checked on its own. A sub-category needs at least one task.</span>
                             </div>
                             @foreach (var sub in editor.Subcategories.Where(x => !x.Removed))
                             {
-                                <div class="sub-row @(sub.IsArchived ? "archived" : "")" @key="sub.Key">
-                                    <input class="sub-name-input" aria-label="Sub-category name" maxlength="200" @bind="sub.Name" disabled="@sub.IsArchived" />
-                                    <span class="sub-hours">@(sub.Hours > TimeSpan.Zero ? FormatHours(sub.Hours) + " logged" : "No hours yet")@(sub.IsArchived ? " · archived" : "")</span>
-                                    @if (sub.IsArchived)
+                                <div class="sub-block" @key="sub.Key">
+                                    <div class="sub-row @(sub.IsArchived ? "archived" : "")">
+                                        <input class="sub-name-input" aria-label="Sub-category name" maxlength="200" @bind="sub.Name" disabled="@sub.IsArchived" />
+                                        <span class="sub-hours">@(sub.Hours > TimeSpan.Zero ? FormatHours(sub.Hours) + " logged" : "No hours yet")@(sub.IsArchived ? " · archived" : "")</span>
+                                        @if (sub.IsArchived)
+                                        {
+                                            <button type="button" class="sub-btn" @onclick="() => sub.IsArchived = false">Restore</button>
+                                        }
+                                        else if (sub.Hours > TimeSpan.Zero || sub.HasChecks)
+                                        {
+                                            <button type="button" class="sub-btn" title="Hides it from employees; its hours are kept" @onclick="() => sub.IsArchived = true">Archive</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="sub-btn" @onclick="() => RemoveSub(sub)">Remove</button>
+                                        }
+                                    </div>
+                                    @if (!sub.IsArchived)
                                     {
-                                        <button type="button" class="sub-btn" @onclick="() => sub.IsArchived = false">Restore</button>
-                                    }
-                                    else if (sub.Hours > TimeSpan.Zero)
-                                    {
-                                        <button type="button" class="sub-btn" title="Hides it from employees; its hours are kept" @onclick="() => sub.IsArchived = true">Archive</button>
-                                    }
-                                    else
-                                    {
-                                        <button type="button" class="sub-btn" @onclick="() => RemoveSub(sub)">Remove</button>
+                                        <div class="task-list">
+                                            @foreach (var task in sub.Tasks.Where(t => !t.Removed))
+                                            {
+                                                <div class="task-row @(task.IsArchived ? "archived" : "")" @key="task.Key">
+                                                    <input class="task-name-input" aria-label="Task name" maxlength="200" @bind="task.Name" disabled="@task.IsArchived" />
+                                                    @if (task.Id != 0)
+                                                    {
+                                                        <span class="project-status status-@ProjectOptions.StatusCss(task.Status)">@task.Status</span>
+                                                    }
+                                                    <span class="sub-hours">@(task.Hours > TimeSpan.Zero ? FormatHours(task.Hours) : "No hours")</span>
+                                                    @if (task.IsArchived)
+                                                    {
+                                                        <button type="button" class="sub-btn" @onclick="() => task.IsArchived = false">Restore</button>
+                                                    }
+                                                    else if (task.Hours > TimeSpan.Zero || task.HasChecks)
+                                                    {
+                                                        <button type="button" class="sub-btn" title="Hides it from employees; its hours are kept" @onclick="() => task.IsArchived = true">Archive</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="sub-btn" @onclick="() => RemoveTask(sub, task)">Remove</button>
+                                                    }
+                                                </div>
+                                            }
+                                            <div class="task-add-row">
+                                                <input class="form-input" aria-label="New task under @sub.Name" maxlength="200" placeholder="New task under @(string.IsNullOrWhiteSpace(sub.Name) ? "this sub-category" : sub.Name)" @bind="sub.NewTaskName" @bind:event="oninput" @onkeydown="e => NewTaskKeyDown(e, sub)" />
+                                                <button type="button" class="task-add-btn" @onclick="() => AddTask(sub)">+ Add task</button>
+                                            </div>
+                                        </div>
                                     }
                                 </div>
                             }
@@ -287,7 +321,19 @@
                                     }
                                 </select>
                             </div>
-                            <div class="hint">Checkers review the PDFs engineers submit and approve or return each part. Their checking time is logged separately.</div>
+                            <div class="hint">Checkers do the first check of each task and send it to the project manager or return it to the engineer. Their checking time is logged separately.</div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="pManager">Project manager <span class="req">*</span></label>
+                            <select id="pManager" class="form-input" @bind="editor.ManagerId">
+                                <option value="">Select a manager</option>
+                                @foreach (var person in managerCandidates)
+                                {
+                                    <option value="@person.Id">@person.Name@(person.Id == currentUserId ? " (you)" : "")</option>
+                                }
+                            </select>
+                            <div class="hint">Does the final check after the checker, and can return work to the checker.</div>
                         </div>
 
                         <div class="form-field">
@@ -317,6 +363,7 @@
     private List<Project> projects = new();
     private Dictionary<string, Person> peopleById = new();
     private List<Person> assignable = new();
+    private List<Person> managerCandidates = new();
     private bool loaded;
 
     private string search = "";
@@ -359,6 +406,15 @@
             u => u.Id,
             u => new Person(u.Id, DisplayName(u.FirstName, u.LastName, u.Email), Initials(u.FirstName, u.LastName, u.Email)));
 
+        var managerIds = await (from ur in db.UserRoles
+                                join r in db.Roles on ur.RoleId equals r.Id
+                                where r.Name == "Admin" || r.Name == "Manager"
+                                select ur.UserId).ToListAsync();
+        managerCandidates = peopleById.Values
+            .Where(p => managerIds.Contains(p.Id))
+            .OrderBy(p => p.Name)
+            .ToList();
+
         // Admins aren't tracked, so they can't be assigned.
         assignable = peopleById.Values
             .Where(p => !adminIds.Contains(p.Id))
@@ -399,7 +455,11 @@
     {
         formError = null;
         newSubName = "";
-        editor = new ProjectEditor { DueDate = Clock.Now.Date.AddDays(14) };
+        editor = new ProjectEditor
+        {
+            DueDate = Clock.Now.Date.AddDays(14),
+            ManagerId = managerCandidates.Any(m => m.Id == currentUserId) ? currentUserId ?? "" : ""
+        };
     }
 
     private async Task OpenEdit(Project p)
@@ -421,7 +481,17 @@
             var logged = await db.ProjectTimeEntries
                 .AsNoTracking()
                 .Where(t => t.ProjectId == p.Id && t.SubcategoryId != null)
-                .Select(t => new { t.SubcategoryId, t.StartTime, t.EndTime })
+                .Select(t => new { t.SubcategoryId, t.TaskId, t.StartTime, t.EndTime })
+                .ToListAsync();
+            var tasks = await db.ProjectTasks
+                .AsNoTracking()
+                .Where(t => t.ProjectId == p.Id)
+                .OrderBy(t => t.Id)
+                .ToListAsync();
+            var checkedSubs = await db.CheckSubmissions
+                .AsNoTracking()
+                .Where(c => c.ProjectId == p.Id)
+                .Select(c => new { c.SubcategoryId, c.TaskId })
                 .ToListAsync();
 
             subEdits = subs.Select(x => new SubcategoryEdit
@@ -429,8 +499,19 @@
                 Id = x.Id,
                 Name = x.Name,
                 IsArchived = x.IsArchived,
+                HasChecks = checkedSubs.Any(c => c.SubcategoryId == x.Id),
                 Hours = logged.Where(t => t.SubcategoryId == x.Id)
-                    .Aggregate(TimeSpan.Zero, (sum, t) => sum + ((t.EndTime ?? now) - t.StartTime))
+                    .Aggregate(TimeSpan.Zero, (sum, t) => sum + ((t.EndTime ?? now) - t.StartTime)),
+                Tasks = tasks.Where(t => t.SubcategoryId == x.Id).Select(t => new TaskEdit
+                {
+                    Id = t.Id,
+                    Name = t.Name,
+                    IsArchived = t.IsArchived,
+                    Status = t.Status,
+                    HasChecks = checkedSubs.Any(c => c.TaskId == t.Id),
+                    Hours = logged.Where(e => e.TaskId == t.Id)
+                        .Aggregate(TimeSpan.Zero, (sum, e) => sum + ((e.EndTime ?? now) - e.StartTime))
+                }).ToList()
             }).ToList();
         }
         catch (Exception ex)
@@ -448,6 +529,8 @@
             DueDate = p.DueDate,
             Notes = p.Notes ?? "",
             Status = p.Status,
+            OriginalStatus = p.Status,
+            ManagerId = p.ManagerId ?? p.CreatedById ?? "",
             AssigneeIds = p.Assignments.Where(a => a.Role != ProjectOptions.RoleChecker).Select(a => a.EmployeeId).Distinct().ToList(),
             CheckerIds = p.Assignments.Where(a => a.Role == ProjectOptions.RoleChecker).Select(a => a.EmployeeId).Distinct().ToList()
         };
@@ -487,6 +570,39 @@
         else
         {
             sub.Removed = true;
+        }
+    }
+
+    private void AddTask(SubcategoryEdit sub)
+    {
+        var name = sub.NewTaskName.Trim();
+        if (name.Length == 0) return;
+
+        if (sub.Tasks.Any(t => !t.Removed && string.Equals(t.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            formError = $"\"{name}\" is already a task under {sub.Name}.";
+            return;
+        }
+
+        sub.Tasks.Add(new TaskEdit { Name = name, Status = ProjectOptions.StatusInProgress });
+        sub.NewTaskName = "";
+        formError = null;
+    }
+
+    private void NewTaskKeyDown(KeyboardEventArgs e, SubcategoryEdit sub)
+    {
+        if (e.Key == "Enter") AddTask(sub);
+    }
+
+    private void RemoveTask(SubcategoryEdit sub, TaskEdit task)
+    {
+        if (task.Id == 0)
+        {
+            sub.Tasks.Remove(task);
+        }
+        else
+        {
+            task.Removed = true;
         }
     }
 
@@ -559,6 +675,21 @@
             formError = "Two sub-categories can't have the same name.";
             return;
         }
+        if (keptSubs.Any(x => x.Tasks.Any(t => !t.Removed && string.IsNullOrWhiteSpace(t.Name))))
+        {
+            formError = "Task names can't be empty.";
+            return;
+        }
+        if (keptSubs.Any(x => x.Tasks.Where(t => !t.Removed).GroupBy(t => t.Name.Trim(), StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1)))
+        {
+            formError = "Two tasks under the same sub-category can't have the same name.";
+            return;
+        }
+        if (string.IsNullOrEmpty(editor.ManagerId))
+        {
+            formError = "Pick the project manager who does the final check.";
+            return;
+        }
 
         isSaving = true;
         try
@@ -576,7 +707,7 @@
             {
                 var existing = await db.Projects
                     .Include(p => p.Assignments)
-                    .Include(p => p.Subcategories)
+                    .Include(p => p.Subcategories).ThenInclude(x => x.Tasks)
                     .FirstOrDefaultAsync(p => p.Id == editor.Id);
 
                 if (existing is null)
@@ -593,6 +724,7 @@
             project.Category = string.IsNullOrWhiteSpace(editor.Category) ? null : editor.Category;
             project.DueDate = editor.DueDate.Value.Date;
             project.Notes = string.IsNullOrWhiteSpace(editor.Notes) ? null : editor.Notes.Trim();
+            project.ManagerId = editor.ManagerId;
 
             // Sync assignments (engineers and checkers; one role per person).
             var selected = editor.AssigneeIds.Distinct().ToList();
@@ -622,6 +754,7 @@
 
             // Sync sub-categories. Ones with hours are archived instead of removed.
             var endedSubIds = new List<int>();
+            var endedTaskIds = new List<int>();
             foreach (var edit in editor.Subcategories)
             {
                 var name = edit.Name.Trim();
@@ -630,7 +763,12 @@
                 {
                     if (!edit.Removed && name.Length > 0)
                     {
-                        project.Subcategories.Add(new ProjectSubcategory { Name = name, CreatedAt = now });
+                        var newSub = new ProjectSubcategory { Name = name, CreatedAt = now };
+                        foreach (var taskEdit in edit.Tasks.Where(t => !t.Removed && t.Name.Trim().Length > 0))
+                        {
+                            newSub.Tasks.Add(new ProjectTask { Project = project, Name = taskEdit.Name.Trim(), CreatedAt = now });
+                        }
+                        project.Subcategories.Add(newSub);
                     }
                     continue;
                 }
@@ -660,6 +798,47 @@
                     endedSubIds.Add(edit.Id);
                 }
                 stored.IsArchived = edit.IsArchived;
+
+                // Tasks: ones with hours or check history are archived instead of removed.
+                foreach (var taskEdit in edit.Tasks)
+                {
+                    var taskName = taskEdit.Name.Trim();
+                    if (taskEdit.Id == 0)
+                    {
+                        if (!taskEdit.Removed && taskName.Length > 0)
+                        {
+                            stored.Tasks.Add(new ProjectTask { ProjectId = project.Id, Name = taskName, CreatedAt = now });
+                        }
+                        continue;
+                    }
+
+                    var storedTask = stored.Tasks.FirstOrDefault(t => t.Id == taskEdit.Id);
+                    if (storedTask is null) continue;
+
+                    if (taskEdit.Removed)
+                    {
+                        var taskId = taskEdit.Id;
+                        if (await db.ProjectTimeEntries.AnyAsync(t => t.TaskId == taskId)
+                            || await db.CheckSubmissions.AnyAsync(c => c.TaskId == taskId))
+                        {
+                            storedTask.IsArchived = true;
+                        }
+                        else
+                        {
+                            stored.Tasks.Remove(storedTask);
+                            db.ProjectTasks.Remove(storedTask);
+                        }
+                        endedTaskIds.Add(taskEdit.Id);
+                        continue;
+                    }
+
+                    storedTask.Name = taskName;
+                    if (taskEdit.IsArchived && !storedTask.IsArchived)
+                    {
+                        endedTaskIds.Add(taskEdit.Id);
+                    }
+                    storedTask.IsArchived = taskEdit.IsArchived;
+                }
             }
 
             // Status: new projects start as Assigned; nobody assigned means Unassigned.
@@ -677,7 +856,33 @@
                 project.Status = chosenStatus;
             }
 
+            // Task changes can change a sub-category's status (e.g. a new task under an approved one).
+            // The project's own status follows unless the manager just picked one by hand.
+            if (editor.Id != 0)
+            {
+                var keepStatus = editor.Status != editor.OriginalStatus ? project.Status : null;
+                ProjectChecking.Recompute(project);
+                if (keepStatus is not null)
+                {
+                    project.Status = keepStatus;
+                }
+            }
+
             await db.SaveChangesAsync();
+
+            // Anyone working on an archived or removed task stops.
+            if (endedTaskIds.Count > 0)
+            {
+                var onTasks = await db.Users
+                    .AsNoTracking()
+                    .Where(u => u.CurrentTaskId != null && endedTaskIds.Contains(u.CurrentTaskId.Value))
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                foreach (var userId in onTasks)
+                {
+                    await ProjectWork.StopAsync(db, userId, now, clearCurrentProject: true);
+                }
+            }
 
             // Anyone working on an archived or removed sub-category stops.
             if (endedSubIds.Count > 0)
@@ -743,6 +948,8 @@
         public string Status { get; set; } = ProjectOptions.StatusAssigned;
         public List<string> AssigneeIds { get; set; } = new();
         public List<string> CheckerIds { get; set; } = new();
+        public string ManagerId { get; set; } = "";
+        public string OriginalStatus { get; set; } = "";
         public List<SubcategoryEdit> Subcategories { get; set; } = new();
     }
 
@@ -753,6 +960,21 @@
         public string Name { get; set; } = "";
         public bool IsArchived { get; set; }
         public bool Removed { get; set; }
+        public bool HasChecks { get; set; }
+        public TimeSpan Hours { get; set; }
+        public List<TaskEdit> Tasks { get; set; } = new();
+        public string NewTaskName { get; set; } = "";
+    }
+
+    private sealed class TaskEdit
+    {
+        public string Key { get; } = Guid.NewGuid().ToString("N");
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Status { get; set; } = ProjectOptions.StatusInProgress;
+        public bool IsArchived { get; set; }
+        public bool Removed { get; set; }
+        public bool HasChecks { get; set; }
         public TimeSpan Hours { get; set; }
     }
 }

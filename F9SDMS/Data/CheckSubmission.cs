@@ -20,6 +20,17 @@ namespace F9SDMS.Data
 
         public ProjectSubcategory? Subcategory { get; set; }
 
+        /// <summary>The task submitted; null for a project without sub-categories (and for older submissions).</summary>
+        public int? TaskId { get; set; }
+
+        public ProjectTask? Task { get; set; }
+
+        /// <summary>Who has it now: Checker, Manager or Closed. Null on submissions made before two-level checking.</summary>
+        [MaxLength(20)]
+        public string? Stage { get; set; }
+
+        public List<CheckReview> Reviews { get; set; } = new();
+
         /// <summary>1 for the first submission of this part, 2 after it was returned once, and so on.</summary>
         public int Round { get; set; }
 

@@ -667,4 +667,233 @@ textarea.form-input {
 .dark-mode .status-completed { background: #16452e; color: #6fd39b; }
 .dark-mode .status-returned { background: #4d2222; color: #ff9d92; }
 .dark-mode .checker-line { color: #8b98a3; }
-.dark-mode .checker-chip { background: #2b2450 !important; color: #e8edf0; }
+.dark-mode .checker-chip { background: #33285a !important; color: #e8edf0; }
+
+/* ---- Tasks under sub-categories ---- */
+.sub-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-left: 22px;
+    padding-left: 12px;
+    border-left: 2px solid #c9e6e8;
+}
+
+.task-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 8px 4px 10px;
+    border-radius: 6px;
+    background: #ffffff;
+    border: 1px solid #e0e6e8;
+}
+
+    .task-row.archived {
+        background: #f1f3f4;
+        border-style: dashed;
+    }
+
+.task-name-input {
+    flex-grow: 1;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 8px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13.5px;
+    color: #0c1a27;
+}
+
+    .task-name-input:hover:not(:disabled) {
+        border-color: #d3dade;
+    }
+
+    .task-name-input:focus {
+        outline: none;
+        border-color: #098993;
+    }
+
+    .task-name-input:disabled {
+        color: #7a8892;
+        text-decoration: line-through;
+    }
+
+.task-add-row {
+    display: flex;
+    gap: 8px;
+}
+
+    .task-add-row .form-input {
+        padding: 7px 10px;
+        font-size: 13px;
+        background: #ffffff;
+    }
+
+.task-add-btn {
+    flex: none;
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid #098993;
+    background: transparent;
+    color: #098993;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.status-manager-check { background: #ece8fb; color: #5a45b8; }
+.status-returned-by-manager { background: #fbf0d6; color: #7a5510; }
+
+.dark-mode .status-manager-check { background: #33285a; color: #c4b0ff; }
+.dark-mode .status-returned-by-manager { background: #4a3a14; color: #f0c96a; }
+
+/* ---- Add / Edit Project modal in dark mode ---- */
+.dark-mode .modal-overlay {
+    background: rgba(4, 10, 16, 0.74);
+}
+
+.dark-mode .project-modal {
+    background: #131f2e;
+    border: 1px solid #223244;
+    color: #e8edf0;
+}
+
+.dark-mode .form-field label {
+    color: #9fb3c1;
+}
+
+.dark-mode .req {
+    color: #ff9d92;
+}
+
+.dark-mode .form-input,
+.dark-mode .chip-input {
+    background: #0f1c29;
+    border-color: #2c4356;
+    color: #e8edf0;
+}
+
+    .dark-mode .form-input::placeholder {
+        color: #6c7a86;
+    }
+
+.dark-mode select.form-input option,
+.dark-mode .chip-select option {
+    background: #0f1c29;
+    color: #e8edf0;
+}
+
+.dark-mode .form-input:focus,
+.dark-mode .chip-select:focus {
+    border-color: #14a3ad;
+}
+
+.dark-mode .chip {
+    background: #1b3a44;
+    color: #e8edf0;
+}
+
+.dark-mode .chip-remove {
+    color: #c6d3dc;
+}
+
+.dark-mode .chip-select {
+    color: #c6d3dc;
+}
+
+.dark-mode .hint {
+    color: #8b98a3;
+}
+
+.dark-mode .form-error {
+    background: #4d2222;
+    color: #ffbdb5;
+}
+
+.dark-mode .modal-btn-cancel {
+    border-color: #2c4356;
+    color: #e8edf0;
+}
+
+    .dark-mode .modal-btn-cancel:hover {
+        background: #182530;
+    }
+
+.dark-mode .sub-section {
+    background: #0d1823;
+    border-color: #223244;
+}
+
+.dark-mode .sub-title {
+    color: #e8edf0;
+}
+
+.dark-mode .sub-row,
+.dark-mode .task-row {
+    background: #16232f;
+    border-color: #2c4356;
+}
+
+    .dark-mode .sub-row.archived,
+    .dark-mode .task-row.archived {
+        background: #101b26;
+    }
+
+.dark-mode .sub-name-input,
+.dark-mode .task-name-input {
+    color: #e8edf0;
+}
+
+    .dark-mode .sub-name-input:hover:not(:disabled),
+    .dark-mode .task-name-input:hover:not(:disabled) {
+        border-color: #2c4356;
+    }
+
+    .dark-mode .sub-name-input:focus,
+    .dark-mode .task-name-input:focus {
+        background: #0f1c29;
+        border-color: #14a3ad;
+    }
+
+    .dark-mode .sub-name-input:disabled,
+    .dark-mode .task-name-input:disabled {
+        color: #6c7a86;
+    }
+
+.dark-mode .sub-hours {
+    color: #8b98a3;
+}
+
+.dark-mode .sub-btn {
+    background: transparent;
+    border-color: #2c4356;
+    color: #c6d3dc;
+}
+
+    .dark-mode .sub-btn:hover {
+        border-color: #14a3ad;
+        color: #5fd3da;
+    }
+
+.dark-mode .task-list {
+    border-left-color: #2c4356;
+}
+
+.dark-mode .sub-add-row .form-input,
+.dark-mode .task-add-row .form-input {
+    background: #0f1c29;
+}
+
+.dark-mode .task-add-btn {
+    border-color: #14a3ad;
+    color: #5fd3da;
+}

@@ -12,77 +12,115 @@ namespace F9SDMS.Services
         public static CheckResult Fail(string error) => new(false, error);
     }
 
-    /// <summary>A submission waiting in a checker's "To check" list.</summary>
+    /// <summary>A submission waiting for this person, as a checker or as the project manager.</summary>
     public sealed record CheckQueueItem(
         int SubmissionId,
         int ProjectId,
         string ProjectCode,
         string Sample,
-        int? SubcategoryId,
         string? PartName,
+        string? TaskName,
         int Round,
+        string Level,
         string SubmittedByName,
         DateTime SubmittedAt,
-        string? Note,
+        string? EngineerNote,
+        string? CheckerName,
+        string? CheckerNote,
+        string? ManagerComments,
+        string PdfUrl,
         string PdfFileName,
         long PdfSize,
-        bool IsStarted)
+        string? MarkupUrl,
+        string? MarkupFileName,
+        bool IsStarted,
+        bool ReturnedByManager)
     {
-        public string Title => PartName is null ? $"{ProjectCode} · {Sample}" : $"{ProjectCode} · {Sample} › {PartName}";
+        public bool IsManagerLevel => Level == StageManager;
+
+        public string Title => ProjectChecking.FormatTitle(ProjectCode, Sample, PartName, TaskName);
+
+        /// <summary>The part without the project code, e.g. "Tabuk › FEC › Lighting layout".</summary>
+        public string ShortTitle => string.Join(" › ", new[] { Sample, PartName, TaskName }.Where(x => !string.IsNullOrEmpty(x)));
+    }
+
+    /// <summary>Work returned to an engineer, with what the reviewer said.</summary>
+    public sealed record ReturnedItem(
+        int ProjectId,
+        string ProjectCode,
+        string Sample,
+        string? PartName,
+        int? SubcategoryId,
+        int? TaskId,
+        string? TaskName,
+        int Round,
+        string ReturnedByName,
+        DateTime ReturnedAt,
+        string? Comments,
+        string? MarkupUrl,
+        string? MarkupFileName)
+    {
+        public string ShortTitle => string.Join(" › ", new[] { Sample, PartName, TaskName }.Where(x => !string.IsNullOrEmpty(x)));
     }
 
     /// <summary>
-    /// The checking workflow. A "part" is a sub-category, or the whole project when it has none.
-    /// Engineers submit a part with a PDF; it is locked (For Checking) until one of the project's
-    /// checkers approves it or returns it with comments. Time spent checking is logged as
-    /// Checking hours. When every active sub-category is approved the project is Completed.
+    /// The checking workflow: Engineer → Checker → Project manager.
+    /// A "part" is a task (projects with sub-categories) or the whole project when it has none.
+    /// Engineers submit a part with a PDF. A checker sends it to the project manager or returns it
+    /// to the engineer. The project manager approves it or returns it to the checker. Time spent
+    /// reviewing is logged as Checking hours. A sub-category is approved when all of its tasks are;
+    /// the project is Completed when all sub-categories are.
     /// </summary>
     public static class ProjectChecking
     {
         public static Task<bool> HasRoleAsync(ApplicationDbContext db, int projectId, string userId, string role) =>
             db.ProjectAssignments.AnyAsync(a => a.ProjectId == projectId && a.EmployeeId == userId && a.Role == role);
 
+        public static string FormatTitle(string code, string sample, string? partName, string? taskName) =>
+            string.Join(" › ", new[] { $"{code} · {sample}", partName, taskName }.Where(x => !string.IsNullOrEmpty(x)));
+
         /// <summary>Records a submission and locks the part. The PDF must already be stored.</summary>
-        public static async Task<CheckResult> SubmitAsync(ApplicationDbContext db, string employeeId, int projectId, int? subcategoryId,
+        public static async Task<CheckResult> SubmitAsync(ApplicationDbContext db, string employeeId, int projectId, int? taskId,
             string pdfFileName, string pdfStoredName, long pdfSize, string? note, DateTime now)
         {
             if (!await HasRoleAsync(db, projectId, employeeId, RoleEngineer))
             {
-                return CheckResult.Fail("Only this project's engineers can submit it for checking.");
+                return CheckResult.Fail("Only this project's engineers can submit work for checking.");
             }
 
-            var project = await db.Projects
-                .Include(p => p.Subcategories)
-                .FirstOrDefaultAsync(p => p.Id == projectId);
+            var project = await LoadProjectAsync(db, projectId);
             if (project is null)
             {
                 return CheckResult.Fail("This project no longer exists.");
             }
-
             if (!await db.ProjectAssignments.AnyAsync(a => a.ProjectId == projectId && a.Role == RoleChecker))
             {
                 return CheckResult.Fail("No checker is assigned to this project yet. Ask your manager to add one.");
             }
+            if (string.IsNullOrEmpty(project.ManagerId))
+            {
+                return CheckResult.Fail("This project has no project manager for the final check. Ask your manager to set one.");
+            }
 
             var activeSubs = project.Subcategories.Where(s => !s.IsArchived).ToList();
-            ProjectSubcategory? part = null;
-            if (subcategoryId is int sid)
+            ProjectTask? task = null;
+            if (taskId is int tid)
             {
-                part = activeSubs.FirstOrDefault(s => s.Id == sid);
-                if (part is null)
+                task = activeSubs.SelectMany(s => s.Tasks).FirstOrDefault(t => t.Id == tid && !t.IsArchived);
+                if (task is null)
                 {
-                    return CheckResult.Fail("That sub-category no longer exists.");
+                    return CheckResult.Fail("That task no longer exists.");
                 }
-                if (!CanSubmit(part.Status))
+                if (!CanSubmit(task.Status))
                 {
-                    return CheckResult.Fail($"{part.Name} is {part.Status.ToLowerInvariant()}, so it can't be submitted.");
+                    return CheckResult.Fail($"{task.Name} is {task.Status.ToLowerInvariant()}, so it can't be submitted.");
                 }
             }
             else
             {
                 if (activeSubs.Count > 0)
                 {
-                    return CheckResult.Fail("Pick the sub-category you're submitting.");
+                    return CheckResult.Fail("Pick the task you're submitting.");
                 }
                 if (!CanSubmit(project.Status))
                 {
@@ -90,18 +128,20 @@ namespace F9SDMS.Services
                 }
             }
 
-            if (await db.CheckSubmissions.AnyAsync(c => c.ProjectId == projectId && c.SubcategoryId == subcategoryId && c.Result == null))
+            if (await db.CheckSubmissions.AnyAsync(c => c.ProjectId == projectId && c.TaskId == taskId && c.Result == null))
             {
-                return CheckResult.Fail("This is already waiting for checking.");
+                return CheckResult.Fail("This is already being checked.");
             }
 
-            var round = await db.CheckSubmissions.CountAsync(c => c.ProjectId == projectId && c.SubcategoryId == subcategoryId) + 1;
+            var round = await db.CheckSubmissions.CountAsync(c => c.ProjectId == projectId && c.TaskId == taskId) + 1;
 
             db.CheckSubmissions.Add(new CheckSubmission
             {
                 ProjectId = projectId,
-                SubcategoryId = subcategoryId,
+                SubcategoryId = task?.SubcategoryId,
+                TaskId = taskId,
                 Round = round,
+                Stage = StageChecker,
                 SubmittedById = employeeId,
                 SubmittedAt = now,
                 PdfFileName = TrimFileName(pdfFileName),
@@ -110,10 +150,10 @@ namespace F9SDMS.Services
                 Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
             });
 
-            if (part is not null)
+            if (task is not null)
             {
-                part.Status = StatusForChecking;
-                RecomputeProjectStatus(project);
+                task.Status = StatusForChecking;
+                Recompute(project);
             }
             else
             {
@@ -123,11 +163,13 @@ namespace F9SDMS.Services
             await db.SaveChangesAsync();
 
             // The part is locked now, so anyone modeling it stops.
-            var working = await db.Users
-                .AsNoTracking()
-                .Where(u => u.CurrentProjectId == projectId && u.CurrentSubcategoryId == subcategoryId && u.CurrentCheckId == null)
-                .Select(u => u.Id)
-                .ToListAsync();
+            var working = task is not null
+                ? await db.Users.AsNoTracking()
+                    .Where(u => u.CurrentTaskId == task.Id && u.CurrentCheckId == null)
+                    .Select(u => u.Id).ToListAsync()
+                : await db.Users.AsNoTracking()
+                    .Where(u => u.CurrentProjectId == projectId && u.CurrentSubcategoryId == null && u.CurrentCheckId == null)
+                    .Select(u => u.Id).ToListAsync();
             foreach (var userId in working)
             {
                 await ProjectWork.StopAsync(db, userId, now, clearCurrentProject: true);
@@ -137,117 +179,166 @@ namespace F9SDMS.Services
         }
 
         /// <summary>
-        /// The checker picks up a submission: it becomes theirs, their status becomes
-        /// "Checking · …" and their time is logged as Checking hours. Requires clock-in (checked by the caller).
+        /// A reviewer picks up a submission: their status becomes "Checking · …" and their time is
+        /// logged as Checking hours. Requires clock-in (checked by the caller).
         /// </summary>
-        public static async Task<CheckResult> StartCheckingAsync(ApplicationDbContext db, string checkerId, int submissionId, DateTime now)
+        public static async Task<CheckResult> StartCheckingAsync(ApplicationDbContext db, string userId, int submissionId, DateTime now)
         {
             var submission = await db.CheckSubmissions
                 .Include(c => c.Project)
                 .Include(c => c.Subcategory)
+                .Include(c => c.Task)
                 .FirstOrDefaultAsync(c => c.Id == submissionId);
 
-            var error = await ValidateCheckerAsync(db, submission, checkerId);
+            var error = await ValidateReviewerAsync(db, submission, userId);
             if (error is not null) return CheckResult.Fail(error);
 
-            submission!.CheckerId = checkerId;
-            submission.StartedAt ??= now;
+            if (StageOf(submission!) == StageChecker)
+            {
+                submission!.CheckerId = userId;
+                submission.StartedAt ??= now;
+            }
 
-            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == checkerId);
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
             if (user is null)
             {
                 return CheckResult.Fail("Your account wasn't found.");
             }
 
-            user.CurrentStatus = "Checking · " + PartTitle(submission.Project!, submission.Subcategory);
+            var project = submission!.Project!;
+            user.CurrentStatus = "Checking · " + FormatTitle(project.Code, project.Sample, submission.Subcategory?.Name, submission.Task?.Name);
             user.CurrentProjectId = submission.ProjectId;
             user.CurrentSubcategoryId = submission.SubcategoryId;
+            user.CurrentTaskId = submission.TaskId;
             user.CurrentCheckId = submission.Id;
             await db.SaveChangesAsync();
 
-            await ProjectWork.StartAsync(db, checkerId, submission.ProjectId, submission.SubcategoryId, now, WorkChecking);
+            await ProjectWork.StartAsync(db, userId, submission.ProjectId, submission.SubcategoryId, now, WorkChecking, submission.TaskId);
             return CheckResult.Success;
         }
 
         /// <summary>
-        /// Approves or returns a submission. Returning needs comments; a marked-up PDF is optional
-        /// (it must already be stored). Whoever was checking it goes back to Available.
+        /// Records a review decision. At the checker stage <paramref name="forward"/> sends it to the
+        /// project manager (otherwise it goes back to the engineer). At the manager stage it approves
+        /// the part (otherwise it goes back to the checker). Returning needs comments. The file is an
+        /// updated PDF (checker sending it up) or a marked-up PDF, and must already be stored.
         /// </summary>
-        public static async Task<CheckResult> CompleteAsync(ApplicationDbContext db, string checkerId, int submissionId, bool approve,
-            string? comments, string? markupFileName, string? markupStoredName, long? markupSize, DateTime now)
+        public static async Task<CheckResult> ReviewAsync(ApplicationDbContext db, string userId, int submissionId, bool forward,
+            string? comments, string? fileName, string? fileStoredName, long? fileSize, DateTime now)
         {
             var submission = await db.CheckSubmissions
-                .Include(c => c.Project).ThenInclude(p => p!.Subcategories)
+                .Include(c => c.Task)
                 .Include(c => c.Subcategory)
                 .FirstOrDefaultAsync(c => c.Id == submissionId);
+            if (submission is not null)
+            {
+                submission.Project = await LoadProjectAsync(db, submission.ProjectId);
+            }
 
-            var error = await ValidateCheckerAsync(db, submission, checkerId);
+            var error = await ValidateReviewerAsync(db, submission, userId);
             if (error is not null) return CheckResult.Fail(error);
 
             comments = string.IsNullOrWhiteSpace(comments) ? null : comments.Trim();
-            if (!approve && comments is null)
+            if (!forward && comments is null)
             {
-                return CheckResult.Fail("Add comments so the engineer knows what to fix.");
+                return CheckResult.Fail("Add comments so they know what to fix.");
             }
 
             var project = submission!.Project!;
-            submission.CheckerId = checkerId;
-            submission.StartedAt ??= now;
-            submission.Result = approve ? ResultApproved : ResultReturned;
-            submission.ResultAt = now;
-            submission.Comments = comments;
-            if (!string.IsNullOrEmpty(markupStoredName))
-            {
-                submission.MarkupFileName = TrimFileName(markupFileName ?? "markup.pdf");
-                submission.MarkupStoredName = markupStoredName;
-                submission.MarkupSize = markupSize;
-            }
+            var stage = StageOf(submission);
+            string result;
+            string newStatus;
 
-            if (submission.Subcategory is not null)
+            if (stage == StageChecker)
             {
-                submission.Subcategory.Status = approve ? StatusApproved : StatusReturned;
-                RecomputeProjectStatus(project);
+                if (forward && string.IsNullOrEmpty(project.ManagerId))
+                {
+                    return CheckResult.Fail("This project has no project manager for the final check. Ask a manager to set one.");
+                }
+
+                submission.CheckerId = userId;
+                submission.StartedAt ??= now;
+                if (forward)
+                {
+                    result = ResultSentUp;
+                    submission.Stage = StageManager;
+                    newStatus = StatusManagerCheck;
+                }
+                else
+                {
+                    result = ResultReturned;
+                    submission.Stage = StageClosed;
+                    submission.Result = ResultReturned;
+                    submission.ResultAt = now;
+                    newStatus = StatusReturned;
+                }
             }
             else
             {
-                project.Status = approve ? StatusCompleted : StatusReturned;
+                if (forward)
+                {
+                    result = ResultApproved;
+                    submission.Stage = StageClosed;
+                    submission.Result = ResultApproved;
+                    submission.ResultAt = now;
+                    newStatus = StatusApproved;
+                }
+                else
+                {
+                    result = ResultReturned;
+                    submission.Stage = StageChecker;
+                    newStatus = StatusReturnedByManager;
+                }
             }
 
+            db.CheckReviews.Add(new CheckReview
+            {
+                SubmissionId = submission.Id,
+                Level = stage,
+                ReviewerId = userId,
+                Result = result,
+                Comments = comments,
+                FileName = string.IsNullOrEmpty(fileStoredName) ? null : TrimFileName(fileName ?? "file.pdf"),
+                FileStoredName = string.IsNullOrEmpty(fileStoredName) ? null : fileStoredName,
+                FileSize = string.IsNullOrEmpty(fileStoredName) ? null : fileSize,
+                CreatedAt = now
+            });
+
+            SetPartStatus(submission, project, newStatus);
             await db.SaveChangesAsync();
 
-            var checking = await db.Users
+            // Whoever was reviewing it goes back to Available.
+            var reviewing = await db.Users
                 .AsNoTracking()
                 .Where(u => u.CurrentCheckId == submissionId)
                 .Select(u => u.Id)
                 .ToListAsync();
-            foreach (var userId in checking)
+            foreach (var reviewerId in reviewing)
             {
-                await ProjectWork.StopAsync(db, userId, now, clearCurrentProject: true);
+                await ProjectWork.StopAsync(db, reviewerId, now, clearCurrentProject: true);
             }
 
             return CheckResult.Success;
         }
 
-        /// <summary>Manager action: an approved part (or completed project without sub-categories) goes back to In Progress.</summary>
-        public static async Task<CheckResult> ReopenAsync(ApplicationDbContext db, int projectId, int? subcategoryId)
+        /// <summary>Manager action: an approved task (or completed project without sub-categories) goes back to In Progress.</summary>
+        public static async Task<CheckResult> ReopenAsync(ApplicationDbContext db, int projectId, int? taskId)
         {
-            var project = await db.Projects
-                .Include(p => p.Subcategories)
-                .FirstOrDefaultAsync(p => p.Id == projectId);
+            var project = await LoadProjectAsync(db, projectId);
             if (project is null)
             {
                 return CheckResult.Fail("This project no longer exists.");
             }
 
-            if (subcategoryId is int sid)
+            if (taskId is int tid)
             {
-                var part = project.Subcategories.FirstOrDefault(s => s.Id == sid);
-                if (part is null || part.Status != StatusApproved)
+                var task = project.Subcategories.SelectMany(s => s.Tasks).FirstOrDefault(t => t.Id == tid);
+                if (task is null || task.Status != StatusApproved)
                 {
-                    return CheckResult.Fail("Only approved sub-categories can be reopened.");
+                    return CheckResult.Fail("Only approved tasks can be reopened.");
                 }
-                part.Status = StatusInProgress;
-                RecomputeProjectStatus(project);
+                task.Status = StatusInProgress;
+                Recompute(project);
             }
             else
             {
@@ -262,40 +353,140 @@ namespace F9SDMS.Services
             return CheckResult.Success;
         }
 
-        /// <summary>Submissions waiting for this checker: unclaimed ones on their projects and ones they started.</summary>
-        public static async Task<List<CheckQueueItem>> GetQueueAsync(ApplicationDbContext db, string checkerId)
+        /// <summary>
+        /// What's waiting for this person: submissions at the checker stage on projects they check
+        /// (unclaimed, or claimed by them) and submissions at the manager stage on projects they manage.
+        /// </summary>
+        public static async Task<List<CheckQueueItem>> GetQueueAsync(ApplicationDbContext db, string userId)
         {
-            var projectIds = await db.ProjectAssignments
+            var checkerProjects = await db.ProjectAssignments
                 .AsNoTracking()
-                .Where(a => a.EmployeeId == checkerId && a.Role == RoleChecker)
+                .Where(a => a.EmployeeId == userId && a.Role == RoleChecker)
                 .Select(a => a.ProjectId)
                 .ToListAsync();
-            if (projectIds.Count == 0) return new();
+            var managedProjects = await db.Projects
+                .AsNoTracking()
+                .Where(p => p.ManagerId == userId)
+                .Select(p => p.Id)
+                .ToListAsync();
+            if (checkerProjects.Count == 0 && managedProjects.Count == 0) return new();
 
             var open = await db.CheckSubmissions
                 .AsNoTracking()
                 .Include(c => c.Project)
                 .Include(c => c.Subcategory)
-                .Where(c => projectIds.Contains(c.ProjectId) && c.Result == null && (c.CheckerId == null || c.CheckerId == checkerId))
+                .Include(c => c.Task)
+                .Include(c => c.Reviews)
+                .Where(c => c.Result == null && (
+                    ((c.Stage == null || c.Stage == StageChecker) && checkerProjects.Contains(c.ProjectId) && (c.CheckerId == null || c.CheckerId == userId))
+                    || (c.Stage == StageManager && managedProjects.Contains(c.ProjectId))))
                 .OrderBy(c => c.SubmittedAt)
                 .ToListAsync();
             if (open.Count == 0) return new();
 
             var names = await GetNamesAsync(db);
-            return open.Select(c => new CheckQueueItem(
-                c.Id,
-                c.ProjectId,
-                c.Project!.Code,
-                c.Project.Sample,
-                c.SubcategoryId,
-                c.Subcategory?.Name,
-                c.Round,
-                names.TryGetValue(c.SubmittedById, out var n) ? n : "Unknown",
-                c.SubmittedAt,
-                c.Note,
-                c.PdfFileName,
-                c.PdfSize,
-                c.CheckerId == checkerId)).ToList();
+            string NameOf(string? id) => id is not null && names.TryGetValue(id, out var n) ? n : "Unknown";
+
+            return open.Select(c =>
+            {
+                var reviews = c.Reviews.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).ToList();
+                var stage = StageOf(c);
+                var lastSentUp = reviews.LastOrDefault(r => r.Result == ResultSentUp);
+                var lastReview = reviews.LastOrDefault();
+                var managerReturn = stage == StageChecker && lastReview is not null && lastReview.Level == StageManager ? lastReview : null;
+
+                // The PDF to review: the checker's updated PDF if they attached one, else the engineer's.
+                var useCheckerFile = lastSentUp?.FileStoredName is not null;
+                return new CheckQueueItem(
+                    c.Id,
+                    c.ProjectId,
+                    c.Project!.Code,
+                    c.Project.Sample,
+                    c.Subcategory?.Name,
+                    c.Task?.Name,
+                    c.Round,
+                    stage,
+                    NameOf(c.SubmittedById),
+                    c.SubmittedAt,
+                    c.Note,
+                    c.CheckerId is null ? null : NameOf(c.CheckerId),
+                    lastSentUp?.Comments,
+                    managerReturn?.Comments,
+                    useCheckerFile ? $"/checks/review/{lastSentUp!.Id}" : $"/checks/{c.Id}/pdf",
+                    useCheckerFile ? lastSentUp!.FileName ?? "file.pdf" : c.PdfFileName,
+                    useCheckerFile ? lastSentUp!.FileSize ?? 0 : c.PdfSize,
+                    managerReturn?.FileStoredName is null ? null : $"/checks/review/{managerReturn.Id}",
+                    managerReturn?.FileName,
+                    stage == StageChecker && c.CheckerId == userId && c.StartedAt is not null && managerReturn is null,
+                    managerReturn is not null);
+            }).ToList();
+        }
+
+        /// <summary>
+        /// Tasks (and projects without sub-categories) returned to the engineers of projects this
+        /// person works on, with the latest return comments.
+        /// </summary>
+        public static async Task<List<ReturnedItem>> GetReturnedAsync(ApplicationDbContext db, string engineerId)
+        {
+            var projectIds = await db.ProjectAssignments
+                .AsNoTracking()
+                .Where(a => a.EmployeeId == engineerId && a.Role == RoleEngineer)
+                .Select(a => a.ProjectId)
+                .ToListAsync();
+            if (projectIds.Count == 0) return new();
+
+            var returnedTaskIds = await db.ProjectTasks
+                .AsNoTracking()
+                .Where(t => projectIds.Contains(t.ProjectId) && !t.IsArchived && t.Status == StatusReturned)
+                .Select(t => t.Id)
+                .ToListAsync();
+            var returnedProjectIds = await db.Projects
+                .AsNoTracking()
+                .Where(p => projectIds.Contains(p.Id) && p.Status == StatusReturned && !p.Subcategories.Any(s => !s.IsArchived))
+                .Select(p => p.Id)
+                .ToListAsync();
+            if (returnedTaskIds.Count == 0 && returnedProjectIds.Count == 0) return new();
+
+            // The latest returned submission for each part.
+            var submissions = await db.CheckSubmissions
+                .AsNoTracking()
+                .Include(c => c.Project)
+                .Include(c => c.Subcategory)
+                .Include(c => c.Task)
+                .Include(c => c.Reviews)
+                .Where(c => c.Result == ResultReturned
+                    && ((c.TaskId != null && returnedTaskIds.Contains(c.TaskId.Value))
+                        || (c.TaskId == null && returnedProjectIds.Contains(c.ProjectId))))
+                .ToListAsync();
+
+            var names = await GetNamesAsync(db);
+            string NameOf(string? id) => id is not null && names.TryGetValue(id, out var n) ? n : "Unknown";
+
+            return submissions
+                .GroupBy(c => (c.ProjectId, c.TaskId))
+                .Select(g => g.OrderByDescending(c => c.ResultAt ?? c.SubmittedAt).First())
+                .Select(c =>
+                {
+                    var review = c.Reviews.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).LastOrDefault(r => r.Result == ResultReturned && r.Level == StageChecker);
+                    return new ReturnedItem(
+                        c.ProjectId,
+                        c.Project!.Code,
+                        c.Project.Sample,
+                        c.Subcategory?.Name,
+                        c.SubcategoryId,
+                        c.TaskId,
+                        c.Task?.Name,
+                        c.Round,
+                        NameOf(review?.ReviewerId ?? c.CheckerId),
+                        review?.CreatedAt ?? c.ResultAt ?? c.SubmittedAt,
+                        review is not null ? review.Comments : c.Comments,
+                        review is not null
+                            ? (review.FileStoredName is null ? null : $"/checks/review/{review.Id}")
+                            : (c.MarkupStoredName is null ? null : $"/checks/{c.Id}/markup"),
+                        review is not null ? review.FileName : c.MarkupFileName);
+                })
+                .OrderByDescending(x => x.ReturnedAt)
+                .ToList();
         }
 
         /// <summary>Display names of every user, by id.</summary>
@@ -313,37 +504,176 @@ namespace F9SDMS.Services
         }
 
         /// <summary>
-        /// For projects with sub-categories: Completed when every active part is approved,
-        /// For Checking when the rest are all waiting on checkers, otherwise In Progress.
+        /// Updates every sub-category's status from its tasks, then the project's status from its
+        /// sub-categories. Requires Subcategories and their Tasks to be loaded.
         /// </summary>
-        public static void RecomputeProjectStatus(Project project)
+        public static void Recompute(Project project)
         {
-            var active = project.Subcategories.Where(s => !s.IsArchived).ToList();
-            if (active.Count == 0) return;
+            var activeSubs = project.Subcategories.Where(s => !s.IsArchived).ToList();
+            foreach (var sub in activeSubs)
+            {
+                var tasks = sub.Tasks.Where(t => !t.IsArchived).ToList();
+                if (tasks.Count == 0)
+                {
+                    sub.Status = StatusInProgress;
+                }
+                else if (tasks.All(t => t.Status == StatusApproved))
+                {
+                    sub.Status = StatusApproved;
+                }
+                else if (tasks.All(t => t.Status == StatusApproved || IsInReview(t.Status)))
+                {
+                    sub.Status = StatusForChecking;
+                }
+                else
+                {
+                    sub.Status = StatusInProgress;
+                }
+            }
 
-            if (active.All(s => s.Status == StatusApproved))
+            if (activeSubs.Count == 0) return;
+
+            if (activeSubs.All(s => s.Status == StatusApproved))
             {
                 project.Status = StatusCompleted;
             }
-            else if (active.All(s => s.Status == StatusApproved || s.Status == StatusForChecking))
+            else if (activeSubs.All(s => s.Status == StatusApproved || s.Status == StatusForChecking))
             {
                 project.Status = StatusForChecking;
             }
-            else
+            else if (project.Status != StatusUnassigned && project.Status != StatusAssigned)
             {
                 project.Status = StatusInProgress;
             }
         }
 
-        public static string PartTitle(Project project, ProjectSubcategory? part) =>
-            part is null ? $"{project.Code} · {project.Sample}" : $"{project.Code} · {project.Sample} › {part.Name}";
+        /// <summary>
+        /// One-time conversion of data from before tasks and two-level checking. Safe to run on every
+        /// start: it only touches rows that still need converting.
+        /// </summary>
+        public static async Task BackfillAsync(ApplicationDbContext db, DateTime now)
+        {
+            // 1. The project manager defaults to whoever created the project.
+            var noManager = await db.Projects.Where(p => p.ManagerId == null && p.CreatedById != null).ToListAsync();
+            foreach (var p in noManager)
+            {
+                p.ManagerId = p.CreatedById;
+            }
 
-        private static async Task<string?> ValidateCheckerAsync(ApplicationDbContext db, CheckSubmission? submission, string checkerId)
+            // 2. Sub-categories that have hours or submissions without a task get one task with the
+            //    same name, so existing hours and check history stay attached.
+            var subIds = await db.ProjectTimeEntries.Where(t => t.SubcategoryId != null && t.TaskId == null).Select(t => t.SubcategoryId!.Value)
+                .Union(db.CheckSubmissions.Where(c => c.SubcategoryId != null && c.TaskId == null).Select(c => c.SubcategoryId!.Value))
+                .Distinct()
+                .ToListAsync();
+            if (subIds.Count > 0)
+            {
+                var subs = await db.ProjectSubcategories.Include(s => s.Tasks).Where(s => subIds.Contains(s.Id)).ToListAsync();
+                foreach (var sub in subs)
+                {
+                    var task = sub.Tasks.FirstOrDefault(t => string.Equals(t.Name, sub.Name, StringComparison.OrdinalIgnoreCase));
+                    if (task is null)
+                    {
+                        task = new ProjectTask
+                        {
+                            ProjectId = sub.ProjectId,
+                            SubcategoryId = sub.Id,
+                            Name = sub.Name,
+                            IsArchived = sub.IsArchived,
+                            Status = sub.Status switch
+                            {
+                                StatusForChecking => StatusForChecking,
+                                StatusReturned => StatusReturned,
+                                StatusApproved => StatusApproved,
+                                _ => StatusInProgress
+                            },
+                            CreatedAt = now
+                        };
+                        sub.Tasks.Add(task);
+                    }
+                }
+                await db.SaveChangesAsync();
+
+                foreach (var sub in subs)
+                {
+                    var task = sub.Tasks.First(t => string.Equals(t.Name, sub.Name, StringComparison.OrdinalIgnoreCase));
+                    var subId = sub.Id;
+                    foreach (var entry in await db.ProjectTimeEntries.Where(t => t.SubcategoryId == subId && t.TaskId == null).ToListAsync())
+                    {
+                        entry.TaskId = task.Id;
+                    }
+                    foreach (var submission in await db.CheckSubmissions.Where(c => c.SubcategoryId == subId && c.TaskId == null).ToListAsync())
+                    {
+                        submission.TaskId = task.Id;
+                    }
+                    foreach (var user in await db.Users.Where(u => u.CurrentSubcategoryId == subId && u.CurrentTaskId == null).ToListAsync())
+                    {
+                        user.CurrentTaskId = task.Id;
+                    }
+                }
+            }
+
+            // 3. Sub-category statuses now come from their tasks (older ones may still say Returned).
+            var staleSubs = await db.ProjectSubcategories
+                .Include(s => s.Tasks)
+                .Where(s => s.Status == StatusReturned || s.Status == StatusReturnedByManager || s.Status == StatusManagerCheck)
+                .ToListAsync();
+            foreach (var sub in staleSubs)
+            {
+                var tasks = sub.Tasks.Where(t => !t.IsArchived).ToList();
+                sub.Status = tasks.Count > 0 && tasks.All(t => t.Status == StatusApproved) ? StatusApproved
+                    : tasks.Count > 0 && tasks.All(t => t.Status == StatusApproved || IsInReview(t.Status)) ? StatusForChecking
+                    : StatusInProgress;
+            }
+
+            // 4. Submissions from one-level checking get a stage.
+            foreach (var submission in await db.CheckSubmissions.Where(c => c.Stage == null).ToListAsync())
+            {
+                submission.Stage = submission.Result is null ? StageChecker : StageClosed;
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        public static string StageOf(CheckSubmission submission) =>
+            submission.Result is not null ? StageClosed : submission.Stage ?? StageChecker;
+
+        private static Task<Project?> LoadProjectAsync(ApplicationDbContext db, int projectId) =>
+            db.Projects
+                .Include(p => p.Subcategories).ThenInclude(s => s.Tasks)
+                .FirstOrDefaultAsync(p => p.Id == projectId);
+
+        private static void SetPartStatus(CheckSubmission submission, Project project, string status)
+        {
+            if (submission.TaskId is int tid)
+            {
+                var task = project.Subcategories.SelectMany(s => s.Tasks).FirstOrDefault(t => t.Id == tid);
+                if (task is not null)
+                {
+                    task.Status = status;
+                    Recompute(project);
+                    return;
+                }
+            }
+
+            // A project without sub-categories is the part itself.
+            project.Status = status == StatusApproved ? StatusCompleted : status;
+        }
+
+        private static async Task<string?> ValidateReviewerAsync(ApplicationDbContext db, CheckSubmission? submission, string userId)
         {
             if (submission?.Project is null) return "This submission no longer exists.";
-            if (!submission.IsOpen) return "This was already checked.";
-            if (!await HasRoleAsync(db, submission.ProjectId, checkerId, RoleChecker)) return "You're not a checker on this project.";
-            if (submission.CheckerId is not null && submission.CheckerId != checkerId) return "Another checker is already checking this.";
+
+            var stage = StageOf(submission);
+            if (stage == StageClosed) return "This was already checked.";
+
+            if (stage == StageManager)
+            {
+                return submission.Project.ManagerId == userId ? null : "Only this project's manager can do the final check.";
+            }
+
+            if (!await HasRoleAsync(db, submission.ProjectId, userId, RoleChecker)) return "You're not a checker on this project.";
+            if (submission.CheckerId is not null && submission.CheckerId != userId) return "Another checker is already checking this.";
             return null;
         }
 

@@ -17,5 +17,8 @@ namespace F9SDMS.Data
 
         /// <summary>The check submission this person is checking right now, if any.</summary>
         public int? CurrentCheckId { get; set; }
+
+        /// <summary>The task of <see cref="CurrentSubcategoryId"/> being worked on (or checked), if any.</summary>
+        public int? CurrentTaskId { get; set; }
     }
 }

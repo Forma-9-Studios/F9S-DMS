@@ -8,10 +8,10 @@
 
 <div class="check-modal-overlay">
     <div class="check-modal" role="dialog" aria-labelledby="reviewCheckTitle">
-        <div class="check-modal-header review">
+        <div class="check-modal-header @(Item.IsManagerLevel ? "review" : "checker")">
             <h2 id="reviewCheckTitle">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-                Review · @Item.Title · Round @Item.Round
+                @(Item.IsManagerLevel ? "Final check" : "Checker review") · @Item.ShortTitle
             </h2>
             <button type="button" class="check-modal-close" aria-label="Close" @onclick="Cancel" disabled="@busy">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
@@ -19,45 +19,97 @@
         </div>
 
         <div class="check-modal-body">
+            <div class="check-steps" aria-label="Checking progress">
+                <span class="check-step done">Engineer</span>
+                <span class="check-step-line done"></span>
+                <span class="check-step @(Item.IsManagerLevel ? "done" : "active")">Checker</span>
+                <span class="check-step-line @(Item.IsManagerLevel ? "done" : "")"></span>
+                <span class="check-step @(Item.IsManagerLevel ? "active manager" : "")">Manager</span>
+                <span class="check-step-line"></span>
+                <span class="check-step">Approved</span>
+            </div>
+
             <div class="check-submission">
                 <div class="check-submission-top">
-                    <span>Submitted by <strong>@Item.SubmittedByName</strong> · @Item.SubmittedAt.ToString("MMM d, h:mm tt")</span>
-                    <a href="/checks/@Item.SubmissionId/pdf" target="_blank" rel="noopener" class="check-pdf-link">
+                    <span>
+                        Round @Item.Round · submitted by <strong>@Item.SubmittedByName</strong> · @Item.SubmittedAt.ToString("MMM d, h:mm tt")
+                        @if (Item.IsManagerLevel && Item.CheckerName is not null)
+                        {
+                            <span> · checked by <strong>@Item.CheckerName</strong></span>
+                        }
+                    </span>
+                    <a href="@Item.PdfUrl" target="_blank" rel="noopener" class="check-pdf-link">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                         @Item.PdfFileName
                     </a>
                 </div>
-                @if (!string.IsNullOrEmpty(Item.Note))
+                @if (!string.IsNullOrEmpty(Item.EngineerNote))
                 {
-                    <div class="check-submission-note">“@Item.Note”</div>
+                    <div class="check-submission-note"><strong>Engineer:</strong> “@Item.EngineerNote”</div>
+                }
+                @if (Item.IsManagerLevel && !string.IsNullOrEmpty(Item.CheckerNote))
+                {
+                    <div class="check-submission-note"><strong>Checker:</strong> “@Item.CheckerNote”</div>
+                }
+                @if (Item.ReturnedByManager)
+                {
+                    <div class="check-submission-note returned">
+                        <strong>Returned by the manager:</strong> “@Item.ManagerComments”
+                        @if (Item.MarkupUrl is not null)
+                        {
+                            <a href="@Item.MarkupUrl" target="_blank" rel="noopener" class="check-pdf-link">@Item.MarkupFileName</a>
+                        }
+                    </div>
                 }
             </div>
 
             <div class="check-field">
                 <span class="check-label">Result <span class="req">*</span></span>
                 <div class="check-result-options" role="radiogroup">
-                    <button type="button" role="radio" aria-checked="@(approve == true ? "true" : "false")" class="check-result approve @(approve == true ? "selected" : "")" @onclick="() => approve = true" disabled="@busy">
-                        <span class="check-result-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12" /></svg></span>
-                        <span><span class="check-result-title">Approve</span><span class="check-result-sub">@(Item.PartName ?? "The project") is done</span></span>
+                    <button type="button" role="radio" aria-checked="@(forward == true ? "true" : "false")" class="check-result @(Item.IsManagerLevel ? "approve" : "send") @(forward == true ? "selected" : "")" @onclick="() => forward = true" disabled="@busy">
+                        <span class="check-result-icon">
+                            @if (Item.IsManagerLevel)
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12" /></svg>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+                            }
+                        </span>
+                        <span>
+                            <span class="check-result-title">@(Item.IsManagerLevel ? "Approve" : "Send to Manager")</span>
+                            <span class="check-result-sub">@(Item.IsManagerLevel ? $"{Item.TaskName ?? Item.Sample} is done" : "Looks right · ready for the final check")</span>
+                        </span>
                     </button>
-                    <button type="button" role="radio" aria-checked="@(approve == false ? "true" : "false")" class="check-result return @(approve == false ? "selected" : "")" @onclick="() => approve = false" disabled="@busy">
+                    <button type="button" role="radio" aria-checked="@(forward == false ? "true" : "false")" class="check-result @(Item.IsManagerLevel ? "return-up" : "return") @(forward == false ? "selected" : "")" @onclick="() => forward = false" disabled="@busy">
                         <span class="check-result-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 14 4 9 9 4" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" /></svg></span>
-                        <span><span class="check-result-title">Return for revision</span><span class="check-result-sub">Unlocks it for @FirstName(Item.SubmittedByName)</span></span>
+                        <span>
+                            <span class="check-result-title">@(Item.IsManagerLevel ? "Return to Checker" : "Return to engineer")</span>
+                            <span class="check-result-sub">@(Item.IsManagerLevel ? $"{(Item.CheckerName is null ? "The checker" : FirstName(Item.CheckerName))} fixes it or sends it back" : $"Unlocks it for {FirstName(Item.SubmittedByName)}")</span>
+                        </span>
                     </button>
                 </div>
             </div>
 
             <div class="check-field">
-                <label for="checkComments" class="check-label">Comments @if (approve == false) { <span class="req">*</span> } <span class="check-optional">@(approve == false ? "(required when returning)" : "(optional)")</span></label>
-                <textarea id="checkComments" class="check-input" rows="3" maxlength="4000" placeholder="What needs fixing, with page or grid references…" @bind="comments" disabled="@busy"></textarea>
+                <label for="checkComments" class="check-label">
+                    @(forward == true && !Item.IsManagerLevel ? "Note for the manager" : "Comments")
+                    @if (forward == false) { <span class="req">*</span> }
+                    <span class="check-optional">@(forward == false ? "(required when returning)" : "(optional)")</span>
+                </label>
+                <textarea id="checkComments" class="check-input" rows="3" maxlength="4000" placeholder="@(forward == false ? "What needs fixing, with page or grid references…" : "")" @bind="comments" disabled="@busy"></textarea>
             </div>
 
             <div class="check-field">
-                <span class="check-label">Marked-up PDF <span class="check-optional">(optional, up to 50 MB)</span></span>
-                <PdfPicker @bind-Value="markup" Disabled="@busy" />
+                <span class="check-label">
+                    @(forward == true && !Item.IsManagerLevel ? "Updated PDF" : "Marked-up PDF")
+                    <span class="check-optional">@(forward == true && !Item.IsManagerLevel ? "(optional · if none, the engineer's PDF goes to the manager)" : "(optional, up to 50 MB)")</span>
+                </span>
+                <PdfPicker @bind-Value="file" Disabled="@busy" />
             </div>
 
-            <div class="check-hint">Your time on this check is saved as <strong>Checking</strong> hours. Your status goes back to Available when you finish.</div>
+            <div class="check-hint">Your time on this review is saved as <strong>Checking</strong> hours. Your status goes back to Available when you finish.</div>
 
             @if (error is not null)
             {
@@ -67,16 +119,16 @@
 
         <div class="check-modal-footer">
             <button type="button" class="check-btn-cancel" @onclick="Cancel" disabled="@busy">Cancel</button>
-            @if (approve == false)
+            @if (forward == false)
             {
-                <button type="button" class="check-btn-danger" @onclick="Finish" disabled="@busy">
-                    @(busy ? "Saving…" : $"Return to {FirstName(Item.SubmittedByName)}")
+                <button type="button" class="@(Item.IsManagerLevel ? "check-btn-warn" : "check-btn-danger")" @onclick="Finish" disabled="@busy">
+                    @(busy ? "Saving…" : Item.IsManagerLevel ? $"Return to {FirstName(Item.CheckerName ?? "Checker")}" : $"Return to {FirstName(Item.SubmittedByName)}")
                 </button>
             }
             else
             {
-                <button type="button" class="check-btn-primary" @onclick="Finish" disabled="@(busy || approve is null)">
-                    @(busy ? "Saving…" : "Approve")
+                <button type="button" class="@(Item.IsManagerLevel ? "check-btn-primary" : "check-btn-send")" @onclick="Finish" disabled="@(busy || forward is null)">
+                    @(busy ? "Saving…" : Item.IsManagerLevel ? "Approve" : "Send to Manager")
                 </button>
             }
         </div>
@@ -85,14 +137,14 @@
 
 @code {
     [Parameter, EditorRequired] public CheckQueueItem Item { get; set; } = default!;
-    [Parameter, EditorRequired] public string CheckerId { get; set; } = "";
+    [Parameter, EditorRequired] public string ReviewerId { get; set; } = "";
 
     /// <summary>Called with a success message, or null when cancelled.</summary>
     [Parameter] public EventCallback<string?> OnClose { get; set; }
 
-    private bool? approve;
+    private bool? forward;
     private string comments = "";
-    private IBrowserFile? markup;
+    private IBrowserFile? file;
     private string? error;
     private bool busy;
 
@@ -109,14 +161,14 @@
         if (busy) return;
         error = null;
 
-        if (approve is not bool isApproval)
+        if (forward is not bool isForward)
         {
-            error = "Choose Approve or Return for revision.";
+            error = "Choose a result.";
             return;
         }
-        if (!isApproval && string.IsNullOrWhiteSpace(comments))
+        if (!isForward && string.IsNullOrWhiteSpace(comments))
         {
-            error = "Add comments so the engineer knows what to fix.";
+            error = "Add comments so they know what to fix.";
             return;
         }
 
@@ -124,18 +176,18 @@
         string? storedName = null;
         try
         {
-            long? markupSize = null;
-            if (markup is not null)
+            long? size = null;
+            if (file is not null)
             {
-                await using var stream = markup.OpenReadStream(CheckFileStore.MaxBytes);
+                await using var stream = file.OpenReadStream(CheckFileStore.MaxBytes);
                 var saved = await Store.SaveAsync(stream);
                 storedName = saved.StoredName;
-                markupSize = saved.Size;
+                size = saved.Size;
             }
 
             await using var db = await DbFactory.CreateDbContextAsync();
-            var result = await ProjectChecking.CompleteAsync(db, CheckerId, Item.SubmissionId, isApproval, comments,
-                markup?.Name, storedName, markupSize, Clock.Now);
+            var result = await ProjectChecking.ReviewAsync(db, ReviewerId, Item.SubmissionId, isForward, comments,
+                file?.Name, storedName, size, Clock.Now);
             if (!result.Ok)
             {
                 Store.Delete(storedName);
@@ -143,9 +195,16 @@
                 return;
             }
 
-            await OnClose.InvokeAsync(isApproval
-                ? $"{Item.Title} was approved."
-                : $"{Item.Title} was returned to {Item.SubmittedByName}.");
+            string message;
+            if (Item.IsManagerLevel)
+            {
+                message = isForward ? $"{Item.ShortTitle} was approved." : $"{Item.ShortTitle} was returned to {Item.CheckerName ?? "the checker"}.";
+            }
+            else
+            {
+                message = isForward ? $"{Item.ShortTitle} was sent to the project manager." : $"{Item.ShortTitle} was returned to {Item.SubmittedByName}.";
+            }
+            await OnClose.InvokeAsync(message);
         }
         catch (InvalidDataException ex)
         {
@@ -154,7 +213,7 @@
         catch (Exception ex)
         {
             Store.Delete(storedName);
-            Logger.LogError(ex, "Saving the check result failed.");
+            Logger.LogError(ex, "Saving the review failed.");
             error = "Couldn't save the result. Please try again.";
         }
         finally

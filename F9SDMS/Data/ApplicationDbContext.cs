@@ -11,6 +11,8 @@ namespace F9SDMS.Data
         public DbSet<ProjectTimeEntry> ProjectTimeEntries => Set<ProjectTimeEntry>();
         public DbSet<ProjectSubcategory> ProjectSubcategories => Set<ProjectSubcategory>();
         public DbSet<CheckSubmission> CheckSubmissions => Set<CheckSubmission>();
+        public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
+        public DbSet<CheckReview> CheckReviews => Set<CheckReview>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -50,6 +52,36 @@ namespace F9SDMS.Data
                 .WithMany()
                 .HasForeignKey(c => c.SubcategoryId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // Tasks: removing a task never removes hours or check history.
+            builder.Entity<ProjectTask>()
+                .HasOne(t => t.Subcategory)
+                .WithMany(s => s.Tasks)
+                .HasForeignKey(t => t.SubcategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Entity<ProjectTask>()
+                .HasOne(t => t.Project)
+                .WithMany(p => p.Tasks)
+                .HasForeignKey(t => t.ProjectId)
+                .OnDelete(DeleteBehavior.NoAction);
+            builder.Entity<ProjectTask>()
+                .Property(t => t.Status)
+                .HasDefaultValue(ProjectOptions.StatusInProgress);
+            builder.Entity<ProjectTimeEntry>()
+                .HasOne(t => t.Task)
+                .WithMany()
+                .HasForeignKey(t => t.TaskId)
+                .OnDelete(DeleteBehavior.SetNull);
+            builder.Entity<CheckSubmission>()
+                .HasOne(c => c.Task)
+                .WithMany()
+                .HasForeignKey(c => c.TaskId)
+                .OnDelete(DeleteBehavior.SetNull);
+            builder.Entity<CheckReview>()
+                .HasOne(r => r.Submission)
+                .WithMany(c => c.Reviews)
+                .HasForeignKey(r => r.SubmissionId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

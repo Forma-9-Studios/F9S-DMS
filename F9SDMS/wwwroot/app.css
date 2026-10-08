@@ -644,3 +644,193 @@ textarea.check-input {
     border-color: #2c4356;
     color: #e8edf0;
 }
+
+/* ---- Two-level checking (Engineer > Checker > Manager) ---- */
+.check-modal-header.checker {
+    background: #2a5ea8;
+}
+
+.check-steps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #e5e9eb;
+    background: #f6f8f9;
+}
+
+.check-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #9aa7b0;
+    white-space: nowrap;
+}
+
+    .check-step::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #c9d3d8;
+    }
+
+    .check-step.done {
+        color: #0c1a27;
+    }
+
+        .check-step.done::before {
+            background: #2f9e62;
+        }
+
+    .check-step.active {
+        color: #2a5ea8;
+    }
+
+        .check-step.active::before {
+            background: #4a86d6;
+        }
+
+    .check-step.active.manager {
+        color: #5a45b8;
+    }
+
+        .check-step.active.manager::before {
+            background: #6e56cf;
+        }
+
+.check-step-line {
+    flex-grow: 1;
+    height: 2px;
+    background: #dde3e5;
+}
+
+    .check-step-line.done {
+        background: #2f9e62;
+    }
+
+.check-submission-note.returned {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #fdf6e4;
+    color: #6b4c0c;
+}
+
+.check-result.send .check-result-icon {
+    background: #e2ecfb;
+    color: #2a5ea8;
+}
+
+.check-result.send.selected {
+    border: 2px solid #2a5ea8;
+    background: #f2f7fe;
+}
+
+.check-result.return-up .check-result-icon {
+    background: #fbf0d6;
+    color: #7a5510;
+}
+
+.check-result.return-up.selected {
+    border: 2px solid #a0700f;
+    background: #fdf8ec;
+}
+
+.check-btn-send,
+.check-btn-warn {
+    padding: 11px 20px;
+    border: none;
+    border-radius: 8px;
+    color: #ffffff;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.check-btn-send {
+    background: #2a5ea8;
+}
+
+.check-btn-warn {
+    background: #a0700f;
+}
+
+    .check-btn-send:disabled,
+    .check-btn-warn:disabled {
+        opacity: 0.65;
+        cursor: default;
+    }
+
+.dark-mode .check-steps {
+    background: #0f1c29;
+    border-color: #223244;
+}
+
+.dark-mode .check-step {
+    color: #6c7a86;
+}
+
+    .dark-mode .check-step::before {
+        background: #2c4356;
+    }
+
+    .dark-mode .check-step.done {
+        color: #e8edf0;
+    }
+
+        .dark-mode .check-step.done::before {
+            background: #6fd39b;
+        }
+
+    .dark-mode .check-step.active {
+        color: #8db8f2;
+    }
+
+        .dark-mode .check-step.active::before {
+            background: #8db8f2;
+        }
+
+    .dark-mode .check-step.active.manager {
+        color: #c4b0ff;
+    }
+
+        .dark-mode .check-step.active.manager::before {
+            background: #c4b0ff;
+        }
+
+.dark-mode .check-step-line {
+    background: #2c4356;
+}
+
+    .dark-mode .check-step-line.done {
+        background: #6fd39b;
+    }
+
+.dark-mode .check-submission-note.returned {
+    background: #2a2412;
+    color: #f0c96a;
+}
+
+.dark-mode .check-result.send .check-result-icon {
+    background: #1c3560;
+    color: #8db8f2;
+}
+
+.dark-mode .check-result.send.selected {
+    border-color: #8db8f2;
+    background: #13233a;
+}
+
+.dark-mode .check-result.return-up .check-result-icon {
+    background: #4a3a14;
+    color: #f0c96a;
+}
+
+.dark-mode .check-result.return-up.selected {
+    border-color: #f0c96a;
+    background: #2a2412;
+}

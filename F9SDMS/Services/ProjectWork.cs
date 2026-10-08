@@ -15,7 +15,7 @@ namespace F9SDMS.Services
         /// the project In Progress if it was only Assigned. Saves the changes.
         /// </summary>
         public static async Task StartAsync(ApplicationDbContext db, string employeeId, int projectId, int? subcategoryId, DateTime now,
-            string workType = ProjectOptions.WorkModeling)
+            string workType = ProjectOptions.WorkModeling, int? taskId = null)
         {
             await CloseOpenEntriesAsync(db, employeeId, now);
 
@@ -23,6 +23,7 @@ namespace F9SDMS.Services
             {
                 ProjectId = projectId,
                 SubcategoryId = subcategoryId,
+                TaskId = taskId,
                 EmployeeId = employeeId,
                 WorkType = workType,
                 StartTime = now
@@ -54,6 +55,7 @@ namespace F9SDMS.Services
                     user.CurrentProjectId = null;
                     user.CurrentSubcategoryId = null;
                     user.CurrentCheckId = null;
+                    user.CurrentTaskId = null;
                     user.CurrentStatus = "Available";
                 }
             }

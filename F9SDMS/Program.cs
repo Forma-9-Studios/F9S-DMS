@@ -60,6 +60,22 @@ builder.Services.Configure<SecurityStampValidatorOptions>(options =>
 
 var app = builder.Build();
 
+// Convert data from before tasks and two-level checking (only touches rows that still need it).
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<IAppClock>();
+        await ProjectChecking.BackfillAsync(db, clock.Now);
+    }
+    catch (Exception ex)
+    {
+        // Most likely the database hasn't been updated yet (run Update-Database).
+        app.Logger.LogError(ex, "Converting project data for tasks failed.");
+    }
+}
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -117,6 +133,29 @@ app.MapGet("/checks/{id:int}/{kind}", async (int id, string kind, HttpContext ht
     // "inline" opens the PDF in the browser tab instead of downloading it.
     var disposition = new ContentDispositionHeaderValue("inline");
     disposition.SetHttpFileName(fileName ?? "file.pdf");
+    http.Response.Headers.ContentDisposition = disposition.ToString();
+    return Results.File(path, "application/pdf", enableRangeProcessing: true);
+}).RequireAuthorization();
+
+// Files attached to a review: a checker's updated PDF or a marked-up PDF.
+app.MapGet("/checks/review/{id:int}", async (int id, HttpContext http, ApplicationDbContext db, CheckFileStore store) =>
+{
+    var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userId is null) return Results.Unauthorized();
+
+    var review = await db.CheckReviews.AsNoTracking().Include(r => r.Submission).FirstOrDefaultAsync(r => r.Id == id);
+    if (review?.Submission is null) return Results.NotFound();
+
+    var projectId = review.Submission.ProjectId;
+    var allowed = http.User.IsInRole("Admin") || http.User.IsInRole("Manager")
+        || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == projectId && a.EmployeeId == userId);
+    if (!allowed) return Results.Forbid();
+
+    var path = store.GetPath(review.FileStoredName);
+    if (path is null) return Results.NotFound();
+
+    var disposition = new ContentDispositionHeaderValue("inline");
+    disposition.SetHttpFileName(review.FileName ?? "file.pdf");
     http.Response.Headers.ContentDisposition = disposition.ToString();
     return Results.File(path, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();

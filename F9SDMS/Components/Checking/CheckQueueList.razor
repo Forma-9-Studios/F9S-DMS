@@ -1,0 +1,85 @@
+﻿@using F9SDMS.Services
+
+@* The "To check" list: work waiting for this person as a checker or as the project manager.
+   One line per item; click a row to see the notes and the PDF. *@
+
+<div class="queue-list">
+    @foreach (var item in Items)
+    {
+        var isCurrent = CurrentCheckId == item.SubmissionId;
+        var isOpen = expanded.Contains(item.SubmissionId);
+        var (label, css) = item.IsManagerLevel
+            ? ("Final check", "manager")
+            : item.ReturnedByManager ? ("Returned by Manager", "returned") : item.IsStarted ? ("Checking", "checking") : ("For Checking", "waiting");
+        <div class="queue-row @(isCurrent ? "current" : "")">
+            <div class="queue-main" @onclick="() => Toggle(item.SubmissionId)">
+                <span class="queue-tag @css">@label</span>
+                <div class="queue-text">
+                    <div class="queue-title">@item.ShortTitle</div>
+                    <div class="queue-sub">
+                        Round @item.Round · @(item.IsManagerLevel && item.CheckerName is not null ? $"checked by {item.CheckerName}" : $"from {item.SubmittedByName}") · @item.SubmittedAt.ToString("MMM d, h:mm tt")
+                    </div>
+                </div>
+                @if (isCurrent)
+                {
+                    <span class="queue-now">Checking now</span>
+                }
+                else if (ShowStart)
+                {
+                    <button type="button" class="queue-start" @onclick="() => OnStart.InvokeAsync(item)" @onclick:stopPropagation="true" disabled="@(!CanStart)" title="@(CanStart ? "Set your status to checking this" : "Clock in to start checking")">Start</button>
+                }
+                <button type="button" class="queue-review @(item.IsManagerLevel ? "manager" : "")" @onclick="() => OnReview.InvokeAsync(item)" @onclick:stopPropagation="true">Review</button>
+                <span class="queue-chevron @(isOpen ? "open" : "")" aria-hidden="true">›</span>
+            </div>
+            @if (isOpen)
+            {
+                <div class="queue-detail">
+                    @if (item.ReturnedByManager && !string.IsNullOrEmpty(item.ManagerComments))
+                    {
+                        <div class="queue-note returned">Manager: “@item.ManagerComments”</div>
+                    }
+                    @if (item.IsManagerLevel && !string.IsNullOrEmpty(item.CheckerNote))
+                    {
+                        <div class="queue-note">Checker: “@item.CheckerNote”</div>
+                    }
+                    @if (!string.IsNullOrEmpty(item.EngineerNote))
+                    {
+                        <div class="queue-note">Engineer: “@item.EngineerNote”</div>
+                    }
+                    <div class="queue-links">
+                        <a href="@item.PdfUrl" target="_blank" rel="noopener">@item.PdfFileName · @CheckFileStore.FormatSize(item.PdfSize)</a>
+                        @if (item.MarkupUrl is not null)
+                        {
+                            <a href="@item.MarkupUrl" target="_blank" rel="noopener">@item.MarkupFileName</a>
+                        }
+                        <a href="/projects/@item.ProjectId">Open project ›</a>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<CheckQueueItem> Items { get; set; } = Array.Empty<CheckQueueItem>();
+    [Parameter] public int? CurrentCheckId { get; set; }
+
+    /// <summary>Shows the Start button (people whose time is tracked).</summary>
+    [Parameter] public bool ShowStart { get; set; }
+
+    /// <summary>False while not clocked in.</summary>
+    [Parameter] public bool CanStart { get; set; }
+
+    [Parameter] public EventCallback<CheckQueueItem> OnStart { get; set; }
+    [Parameter] public EventCallback<CheckQueueItem> OnReview { get; set; }
+
+    private readonly HashSet<int> expanded = new();
+
+    private void Toggle(int submissionId)
+    {
+        if (!expanded.Remove(submissionId))
+        {
+            expanded.Add(submissionId);
+        }
+    }
+}

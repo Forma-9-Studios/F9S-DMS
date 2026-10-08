@@ -29,5 +29,7 @@ namespace F9SDMS.Data
         public string Status { get; set; } = ProjectOptions.StatusInProgress;
 
         public DateTime CreatedAt { get; set; }
+
+        public List<ProjectTask> Tasks { get; set; } = new();
     }
 }

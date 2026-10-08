@@ -18,7 +18,7 @@
 
 <AppShell Active="@(isManagerView ? "projects" : "dashboard")"
           Title="@(project is null ? "Project" : $"{project.Code} · {project.Sample}")"
-          Subtitle="@(project is null ? null : "Project details, checking and time log")">
+          Subtitle="@(project is null ? null : "Project details, tasks, checking and time log")">
     <ChildContent>
         <a href="@(isManagerView ? "/projects" : "/")" class="back-link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6" /></svg>
@@ -80,6 +80,10 @@
                             }
                         </span>
                     </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Project manager:</span>
+                        <span>@(managerName ?? "Not set")</span>
+                    </div>
 
                     <label for="projectNotes" class="notes-label">Notes</label>
                     <textarea id="projectNotes" class="notes-input" rows="4" maxlength="4000" @bind="notes" @bind:event="oninput"></textarea>
@@ -103,13 +107,13 @@
 
             <div class="breakdown-card">
                 <div class="breakdown-header">
-                    <h2>@(hasSubcategories ? "Sub-categories" : "Hours and checking")</h2>
+                    <h2>@(hasSubcategories ? "Sub-categories and tasks" : "Hours and checking")</h2>
                     <div class="breakdown-actions">
                         @if (SubmittableParts.Count > 0)
                         {
                             <button type="button" class="submit-check-btn" @onclick="() => OpenSubmit(null)">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-                                Submit for checking
+                                @(hasSubcategories ? "Submit a task" : "Submit for checking")
                             </button>
                         }
                         @if (isManagerView)
@@ -128,71 +132,80 @@
                     <span>Total <strong>@FormatDuration(TotalDuration)</strong></span>
                     @if (hasSubcategories)
                     {
-                        <span class="hours-summary-note">@ApprovedCount of @ActivePartCount approved · the project completes when all are approved</span>
+                        <span class="hours-summary-note">@ApprovedTaskCount of @ActiveTaskCount tasks approved · @ApprovedSubCount of @ActiveSubCount sub-categories approved</span>
                     }
                 </div>
 
-                @if (!hasSubcategories && breakdown.Count == 0)
+                @if (!hasSubcategories && wholeProject is null)
                 {
                     <div class="breakdown-empty">
-                        No sub-categories yet.@(isManagerView ? " Add one below to split this project's hours (e.g. Golf, Bowling, FEC)." : "")
+                        No sub-categories yet.@(isManagerView ? " Add one below to split this project into parts with tasks (e.g. Golf, Bowling, FEC)." : "")
                     </div>
                 }
 
-                @if (breakdown.Count > 0)
+                @if (groups.Count > 0 || wholeProject is not null)
                 {
-                    <div class="breakdown-row breakdown-head" aria-hidden="true">
-                        <span>@(hasSubcategories ? "Sub-category" : "Part")</span>
-                        <span>People</span>
+                    <div class="task-grid task-head" aria-hidden="true">
+                        <span>@(hasSubcategories ? "Task" : "Part")</span>
+                        <span>Stage</span>
+                        <span>With</span>
                         <span class="num">Modeling</span>
                         <span class="num">Checking</span>
                         <span></span>
                     </div>
                 }
-                @foreach (var row in breakdown)
+
+                @if (wholeProject is not null)
                 {
-                    <div class="breakdown-row">
-                        <div class="breakdown-name-cell">
-                            <span class="breakdown-name @(row.Archived ? "archived" : "")">@row.Name@(row.Archived ? " (archived)" : "")</span>
-                            @if (row.Status is not null)
+                    @PartRow(wholeProject)
+                }
+
+                @foreach (var group in groups)
+                {
+                    <div class="task-grid sub-group-row @(group.Archived ? "archived" : "")">
+                        <span class="sub-group-name">@group.Name@(group.Archived ? " (archived)" : "")</span>
+                        <span>
+                            @if (group.Status is not null)
                             {
-                                <span class="part-pill part-@(row.IsChecking ? "checking" : ProjectOptions.StatusCss(row.Status))">
-                                    @if (ProjectOptions.IsLocked(row.Status) && row.Status != ProjectOptions.StatusApproved && row.Status != ProjectOptions.StatusCompleted)
-                                    {
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                                    }
-                                    @(row.IsChecking ? "Checking" : row.Status)@(row.Round > 0 ? $" · R{row.Round}" : "")
-                                </span>
-                            }
-                        </div>
-                        <div class="breakdown-bar-wrap">
-                            <div class="breakdown-bar"><div class="breakdown-fill" style="width: @(BarPercent(row.Modeling + row.Checking).ToString(System.Globalization.CultureInfo.InvariantCulture))%"></div></div>
-                            @if (!string.IsNullOrEmpty(row.People))
-                            {
-                                <span class="breakdown-people">@row.People</span>
-                            }
-                            @if (!string.IsNullOrEmpty(row.CheckerNote))
-                            {
-                                <span class="breakdown-people">@row.CheckerNote</span>
-                            }
-                        </div>
-                        <span class="breakdown-hours">@FormatDuration(row.Modeling)</span>
-                        <span class="breakdown-hours checking-hours">@FormatDuration(row.Checking)</span>
-                        <span class="breakdown-row-actions">
-                            @if (row.OpenSubmissionId is int openId)
-                            {
-                                <a href="/checks/@openId/pdf" target="_blank" rel="noopener" class="row-link">View PDF</a>
-                            }
-                            @if (row.Status is not null && SubmittableParts.Any(p => p.Id == row.SubcategoryId))
-                            {
-                                <button type="button" class="row-link" @onclick="() => OpenSubmit(row.SubcategoryId)">Submit</button>
-                            }
-                            @if (isManagerView && (row.Status == ProjectOptions.StatusApproved || (!hasSubcategories && row.Status == ProjectOptions.StatusCompleted)))
-                            {
-                                <button type="button" class="row-link reopen" @onclick="() => Reopen(row.SubcategoryId)" disabled="@isSaving">Reopen</button>
+                                <span class="part-pill part-@ProjectOptions.StatusCss(group.Status)">@group.Status</span>
                             }
                         </span>
+                        <span class="sub-group-progress">@(group.Tasks.Count == 0 ? "No tasks yet" : $"{group.Tasks.Count(t => t.Status == ProjectOptions.StatusApproved)} of {group.Tasks.Count} approved")</span>
+                        <span class="breakdown-hours">@FormatDuration(group.Modeling)</span>
+                        <span class="breakdown-hours checking-hours">@FormatDuration(group.Checking)</span>
+                        <span></span>
                     </div>
+                    @foreach (var part in group.Tasks)
+                    {
+                        @PartRow(part)
+                    }
+                    @if (canAddTasks && !group.Archived && group.SubcategoryId is int groupSubId)
+                    {
+                        <div class="task-add-inline">
+                            <input class="breakdown-input" maxlength="200" aria-label="New task under @group.Name" placeholder="New task under @group.Name"
+                                   value="@NewTaskName(groupSubId)"
+                                   @oninput="e => SetNewTaskName(groupSubId, e)"
+                                   @onkeydown="e => NewTaskKeyDown(groupSubId, e)" />
+                            <button type="button" class="row-link" @onclick="() => AddTask(groupSubId)" disabled="@isSaving">+ Add task</button>
+                        </div>
+                    }
+                }
+
+                @if (generalRow is not null)
+                {
+                    <div class="task-grid sub-group-row">
+                        <span class="sub-group-name">@generalRow.Name</span>
+                        <span></span>
+                        <span class="sub-group-progress">Logged before tasks were added</span>
+                        <span class="breakdown-hours">@FormatDuration(generalRow.Modeling)</span>
+                        <span class="breakdown-hours checking-hours">@FormatDuration(generalRow.Checking)</span>
+                        <span></span>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(subMessage))
+                {
+                    <span class="breakdown-message">@subMessage</span>
                 }
 
                 @if (isManagerView)
@@ -201,26 +214,22 @@
                         <label for="detailNewSub" class="visually-hidden">New sub-category</label>
                         <input id="detailNewSub" class="breakdown-input" maxlength="200" placeholder="New sub-category" @bind="newSubName" @bind:event="oninput" @onkeydown="NewSubKeyDown" />
                         <button type="button" class="secondary-btn" @onclick="AddSubcategory" disabled="@isSaving">+ Add sub-category</button>
-                        @if (!string.IsNullOrEmpty(subMessage))
-                        {
-                            <span class="breakdown-message">@subMessage</span>
-                        }
                     </div>
                 }
             </div>
 
-            <div class="history-card">
+            <div class="history-card" id="check-history">
                 <div class="log-header">
                     <h2>Check history</h2>
-                    @if (hasSubcategories && history.Count > 0)
+                    @if (historyParts.Count > 1)
                     {
                         <div class="log-filter">
-                            <label for="historyFilter">Sub-category</label>
+                            <label for="historyFilter">Show</label>
                             <select id="historyFilter" @bind="historyFilter">
                                 <option value="">All</option>
-                                @foreach (var option in history.Select(h => (h.PartKey, h.PartName)).Distinct())
+                                @foreach (var option in historyParts)
                                 {
-                                    <option value="@option.PartKey">@option.PartName</option>
+                                    <option value="@option.Key">@option.Name</option>
                                 }
                             </select>
                         </div>
@@ -236,40 +245,29 @@
                         @foreach (var h in VisibleHistory)
                         {
                             <div class="history-item">
-                                <span class="history-dot result-@(h.ResultCss)"></span>
+                                <span class="history-dot result-@h.Css"></span>
                                 <div class="history-body">
                                     <div class="history-top">
-                                        <strong>@(hasSubcategories ? $"{h.PartName} · " : "")Round @h.Round</strong>
-                                        <span class="part-pill part-@h.ResultCss">@h.ResultLabel</span>
+                                        <strong>@(historyFilter == "" && hasSubcategories ? $"{h.PartName} · " : "")@h.Level · Round @h.Round</strong>
+                                        <span class="part-pill part-@h.Css">@h.Label</span>
+                                        <span class="history-meta">@h.Who · @h.When.ToString("MMM d, h:mm tt")</span>
                                     </div>
-                                    <div class="history-meta">
-                                        Submitted by @h.SubmittedBy · @h.SubmittedAt.ToString("MMM d, h:mm tt")
-                                        @if (h.CheckerName is not null)
-                                        {
-                                            <span> · @(h.ResultAt is null ? "being checked by" : "checked by") @h.CheckerName@(h.ResultAt is DateTime done ? " · " + done.ToString("MMM d, h:mm tt") : "")</span>
-                                        }
-                                    </div>
-                                    @if (!string.IsNullOrEmpty(h.Note))
+                                    @if (!string.IsNullOrEmpty(h.Text))
                                     {
-                                        <div class="history-note"><span class="history-label">Engineer:</span> @h.Note</div>
+                                        <div class="history-comments">@h.Text</div>
                                     }
-                                    @if (!string.IsNullOrEmpty(h.Comments))
+                                    @if (h.Files.Count > 0)
                                     {
-                                        <div class="history-comments"><span class="history-label">Checker:</span> @h.Comments</div>
+                                        <div class="history-files">
+                                            @foreach (var f in h.Files)
+                                            {
+                                                <a href="@f.Url" target="_blank" rel="noopener" class="file-chip @(f.IsMarkup ? "markup" : "")">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                                                    @f.Name
+                                                </a>
+                                            }
+                                        </div>
                                     }
-                                    <div class="history-files">
-                                        <a href="/checks/@h.Id/pdf" target="_blank" rel="noopener" class="file-chip">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                                            @h.PdfFileName
-                                        </a>
-                                        @if (h.MarkupFileName is not null)
-                                        {
-                                            <a href="/checks/@h.Id/markup" target="_blank" rel="noopener" class="file-chip markup">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-                                                @h.MarkupFileName
-                                            </a>
-                                        }
-                                    </div>
                                 </div>
                             </div>
                         }
@@ -309,7 +307,7 @@
                         <thead>
                             <tr>
                                 <th>Person</th>
-                                <th>Sub-category</th>
+                                <th>@(hasSubcategories ? "Task" : "Sub-category")</th>
                                 <th>Type</th>
                                 <th>Date</th>
                                 <th>Start</th>
@@ -322,7 +320,7 @@
                             {
                                 <tr>
                                     <td>@entry.Name</td>
-                                    <td><span class="sub-pill">@entry.SubName</span></td>
+                                    <td><span class="sub-pill">@entry.PartName</span></td>
                                     <td><span class="type-pill @(entry.WorkType == ProjectOptions.WorkChecking ? "checking" : "")">@entry.WorkType</span></td>
                                     <td>@entry.Start.ToString("MMM d, yyyy")</td>
                                     <td>@entry.Start.ToString("hh:mm:ss tt")</td>
@@ -353,7 +351,7 @@
                 </div>
                 @if (entries.Count == 0)
                 {
-                    <div class="empty-state">No time logged yet. Time is logged while this project is someone's current status.</div>
+                    <div class="empty-state">No time logged yet. Time is logged while a task is someone's current status.</div>
                 }
             </div>
 
@@ -365,6 +363,7 @@
                                    Parts="SubmittableParts"
                                    InitialPartId="submitPartId"
                                    CheckerNames="@string.Join(", ", checkerNames)"
+                                   ManagerName="@managerName"
                                    LockedNote="@LockedNote"
                                    OnClose="OnSubmitClosed" />
             }
@@ -380,14 +379,19 @@
     private bool canView;
     private bool isManagerView;
     private bool isEngineer;
+    private bool canAddTasks;
     private string? currentUserId;
     private List<string> engineerNames = new();
     private List<string> checkerNames = new();
+    private string? managerName;
     private string? createdByName;
     private bool hasSubcategories;
     private List<LogRow> entries = new();
-    private List<BreakdownRow> breakdown = new();
+    private List<GroupRow> groups = new();
+    private PartRowData? wholeProject;
+    private GroupRow? generalRow;
     private List<HistoryRow> history = new();
+    private List<(string Key, string Name)> historyParts = new();
     private List<SubmitCheckDialog.SubmitPart> SubmittableParts = new();
     private string? LockedNote;
     private List<(string Key, string Name)> subFilterOptions = new();
@@ -395,6 +399,7 @@
     private string typeFilter = "";
     private string historyFilter = "";
     private string newSubName = "";
+    private Dictionary<int, string> newTaskNames = new();
     private string? subMessage;
     private bool isExporting;
 
@@ -404,19 +409,13 @@
     private bool checkMessageIsError;
 
     private const string GeneralKey = "general";
-    private const string GeneralName = "General (no sub-category)";
+    private const string ProjectKey = "project";
 
     private IEnumerable<LogRow> VisibleEntries => entries.Where(e =>
         (subFilter == "" || e.SubKey == subFilter) && (typeFilter == "" || e.WorkType == typeFilter));
 
     private IEnumerable<HistoryRow> VisibleHistory =>
         historyFilter == "" ? history : history.Where(h => h.PartKey == historyFilter);
-
-    private double BarPercent(TimeSpan hours)
-    {
-        var max = breakdown.Count == 0 ? 0 : breakdown.Max(b => (b.Modeling + b.Checking).TotalSeconds);
-        return max <= 0 ? 0 : Math.Round(hours.TotalSeconds / max * 100, 1);
-    }
 
     private string notes = "";
     private string? saveMessage;
@@ -430,8 +429,46 @@
     private TimeSpan ModelingTotal => entries.Where(e => e.WorkType != ProjectOptions.WorkChecking).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
     private TimeSpan CheckingTotal => entries.Where(e => e.WorkType == ProjectOptions.WorkChecking).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
 
-    private int ActivePartCount => breakdown.Count(b => b.SubcategoryId is not null && !b.Archived);
-    private int ApprovedCount => breakdown.Count(b => b.SubcategoryId is not null && !b.Archived && b.Status == ProjectOptions.StatusApproved);
+    private IEnumerable<PartRowData> ActiveTasks => groups.Where(g => !g.Archived).SelectMany(g => g.Tasks);
+    private int ActiveTaskCount => ActiveTasks.Count();
+    private int ApprovedTaskCount => ActiveTasks.Count(t => t.Status == ProjectOptions.StatusApproved);
+    private int ActiveSubCount => groups.Count(g => !g.Archived);
+    private int ApprovedSubCount => groups.Count(g => !g.Archived && g.Status == ProjectOptions.StatusApproved);
+
+    // One row of the tasks table (a task, or the whole project when it has no sub-categories).
+    private RenderFragment PartRow(PartRowData part) => @<div class="task-grid task-row @(part.Archived ? "archived" : "")">
+        <span class="task-name @(part.TaskId is null ? "" : "indent")">@part.Name@(part.Archived ? " (archived)" : "")</span>
+        <span>
+            <span class="part-pill part-@part.StageCss">
+                @if (ProjectOptions.IsInReview(part.Status))
+                {
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                }
+                @part.StageLabel@(part.Round > 0 ? $" · R{part.Round}" : "")
+            </span>
+        </span>
+        <span class="task-with">@part.With</span>
+        <span class="breakdown-hours">@FormatDuration(part.Modeling)</span>
+        <span class="breakdown-hours checking-hours">@FormatDuration(part.Checking)</span>
+        <span class="breakdown-row-actions">
+            @if (part.OpenSubmissionId is int openId)
+            {
+                <a href="/checks/@openId/pdf" target="_blank" rel="noopener" class="row-link">View PDF</a>
+            }
+            @if (!part.Archived && SubmittableParts.Any(p => p.Id == part.TaskId))
+            {
+                <button type="button" class="row-link" @onclick="() => OpenSubmit(part.TaskId)">Submit</button>
+            }
+            @if (isManagerView && (part.Status == ProjectOptions.StatusApproved || (part.TaskId is null && part.Status == ProjectOptions.StatusCompleted)))
+            {
+                <button type="button" class="row-link reopen" @onclick="() => Reopen(part.TaskId)" disabled="@isSaving">Reopen</button>
+            }
+            @if (part.Round > 0)
+            {
+                <button type="button" class="row-link" @onclick="() => ShowHistory(part.Key)">History</button>
+            }
+        </span>
+    </div>;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -459,125 +496,179 @@
 
         var myAssignment = currentUserId is null ? null : project.Assignments.FirstOrDefault(a => a.EmployeeId == currentUserId);
         isEngineer = myAssignment is not null && myAssignment.Role == ProjectOptions.RoleEngineer;
+        var isChecker = myAssignment is not null && myAssignment.Role == ProjectOptions.RoleChecker;
         canView = isManagerView || myAssignment is not null;
+        canAddTasks = isManagerView || isChecker;
         notes = project.Notes ?? "";
 
         var names = await ProjectChecking.GetNamesAsync(db);
         string NameOf(string? id) => id is not null && names.TryGetValue(id, out var n) ? n : "Unknown";
 
-        engineerNames = project.Assignments
-            .Where(a => a.Role != ProjectOptions.RoleChecker)
-            .Select(a => NameOf(a.EmployeeId))
-            .OrderBy(n => n)
-            .ToList();
-        checkerNames = project.Assignments
-            .Where(a => a.Role == ProjectOptions.RoleChecker)
-            .Select(a => NameOf(a.EmployeeId))
-            .OrderBy(n => n)
-            .ToList();
-
+        engineerNames = project.Assignments.Where(a => a.Role != ProjectOptions.RoleChecker).Select(a => NameOf(a.EmployeeId)).OrderBy(n => n).ToList();
+        checkerNames = project.Assignments.Where(a => a.Role == ProjectOptions.RoleChecker).Select(a => NameOf(a.EmployeeId)).OrderBy(n => n).ToList();
+        managerName = project.ManagerId is null ? null : NameOf(project.ManagerId);
         createdByName = project.CreatedById is not null && names.TryGetValue(project.CreatedById, out var creator) ? creator : null;
 
         var now = Clock.Now;
-        var timeEntries = await db.ProjectTimeEntries
-            .AsNoTracking()
-            .Where(t => t.ProjectId == ProjectId)
-            .OrderByDescending(t => t.StartTime)
-            .ToListAsync();
-
-        var subs = await db.ProjectSubcategories
-            .AsNoTracking()
-            .Where(x => x.ProjectId == ProjectId)
-            .OrderBy(x => x.Id)
-            .ToListAsync();
-        var subById = subs.ToDictionary(x => x.Id);
-        hasSubcategories = subs.Any(x => !x.IsArchived);
-
+        var timeEntries = await db.ProjectTimeEntries.AsNoTracking().Where(t => t.ProjectId == ProjectId).OrderByDescending(t => t.StartTime).ToListAsync();
+        var subs = await db.ProjectSubcategories.AsNoTracking().Where(x => x.ProjectId == ProjectId).OrderBy(x => x.Id).ToListAsync();
+        var tasks = await db.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == ProjectId).OrderBy(t => t.Id).ToListAsync();
         var submissions = await db.CheckSubmissions
             .AsNoTracking()
+            .Include(c => c.Reviews)
             .Where(c => c.ProjectId == ProjectId)
             .OrderByDescending(c => c.SubmittedAt)
             .ToListAsync();
 
+        var subById = subs.ToDictionary(x => x.Id);
+        var taskById = tasks.ToDictionary(x => x.Id);
+        hasSubcategories = subs.Any(x => !x.IsArchived);
+
         entries = timeEntries.Select(t =>
         {
-            var hasSub = t.SubcategoryId is int sid && subById.ContainsKey(sid);
+            var sub = t.SubcategoryId is int sid && subById.TryGetValue(sid, out var s) ? s : null;
+            var task = t.TaskId is int tid && taskById.TryGetValue(tid, out var tk) ? tk : null;
             var duration = (t.EndTime ?? now) - t.StartTime;
+            var partName = sub is null ? "General" : task is null ? sub.Name : $"{sub.Name} › {task.Name}";
             return new LogRow(
                 NameOf(t.EmployeeId),
                 t.StartTime,
                 t.EndTime,
                 duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
-                hasSub ? t.SubcategoryId!.Value.ToString() : GeneralKey,
-                hasSub ? subById[t.SubcategoryId!.Value].Name : GeneralName,
+                sub?.Id.ToString() ?? GeneralKey,
+                task?.Id,
+                partName,
                 string.IsNullOrEmpty(t.WorkType) ? ProjectOptions.WorkModeling : t.WorkType);
         }).ToList();
 
-        string PeopleSummary(IEnumerable<LogRow> rows) => string.Join(" · ", rows
-            .GroupBy(r => r.Name)
-            .Select(g => (Name: g.Key, Hours: g.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.Duration)))
-            .OrderByDescending(x => x.Hours)
-            .Select(x => $"{x.Name} {FormatShort(x.Hours)}"));
-
-        TimeSpan Sum(IEnumerable<LogRow> rows, string type) => rows
-            .Where(r => (r.WorkType == ProjectOptions.WorkChecking) == (type == ProjectOptions.WorkChecking))
+        TimeSpan Sum(IEnumerable<LogRow> rows, bool checking) => rows
+            .Where(r => (r.WorkType == ProjectOptions.WorkChecking) == checking)
             .Aggregate(TimeSpan.Zero, (sum, r) => sum + r.Duration);
 
-        BreakdownRow MakeRow(string key, string name, int? subId, string? status, bool archived)
+        PartRowData MakePart(string key, string name, int? taskId, string status, bool archived, IEnumerable<LogRow> rows, List<CheckSubmission> partSubs)
         {
-            var rows = entries.Where(e => e.SubKey == key).ToList();
-            var partSubs = submissions.Where(c => c.SubcategoryId == subId).ToList();
+            var list = rows.ToList();
+            var open = partSubs.FirstOrDefault(c => c.Result == null);
             var latest = partSubs.FirstOrDefault();
-            var open = partSubs.FirstOrDefault(c => c.IsOpen);
-            string? checkerNote = null;
-            if (open is not null)
+            var stage = open is null ? null : ProjectChecking.StageOf(open);
+
+            string with;
+            if (status == ProjectOptions.StatusApproved || status == ProjectOptions.StatusCompleted)
             {
-                checkerNote = open.CheckerId is null ? "Waiting for a checker" : $"Being checked by {NameOf(open.CheckerId)}";
+                var approver = latest?.Reviews.OrderBy(r => r.CreatedAt).LastOrDefault(r => r.Result == ProjectOptions.ResultApproved)?.ReviewerId ?? latest?.CheckerId;
+                with = approver is null ? "Approved" : $"Approved by {NameOf(approver)}";
             }
-            else if (latest is not null && latest.CheckerId is not null)
+            else if (stage == ProjectOptions.StageManager)
             {
-                checkerNote = $"{latest.Result} by {NameOf(latest.CheckerId)}";
+                with = managerName ?? "Project manager";
+            }
+            else if (stage == ProjectOptions.StageChecker)
+            {
+                with = open!.CheckerId is null ? "Waiting for a checker" : NameOf(open.CheckerId);
+            }
+            else
+            {
+                var people = list.Where(r => r.WorkType != ProjectOptions.WorkChecking).Select(r => r.Name.Split(' ')[0]).Distinct().ToList();
+                with = people.Count == 0 ? "—" : string.Join(", ", people);
             }
 
-            return new BreakdownRow(key, name, subId, status, Sum(rows, ProjectOptions.WorkModeling), Sum(rows, ProjectOptions.WorkChecking),
-                PeopleSummary(rows), archived, latest?.Round ?? 0, checkerNote, open?.Id, open?.CheckerId is not null);
+            var hasHours = list.Count > 0;
+            var (label, css) = status switch
+            {
+                ProjectOptions.StatusInProgress when !hasHours && partSubs.Count == 0 => ("Not started", "unassigned"),
+                ProjectOptions.StatusForChecking when open?.CheckerId is not null => ("Checking", "checking"),
+                _ => (status, ProjectOptions.StatusCss(status))
+            };
+
+            return new PartRowData(key, name, taskId, status, label, css, with, Sum(list, false), Sum(list, true),
+                archived, latest?.Round ?? 0, open?.Id);
         }
 
-        breakdown = new List<BreakdownRow>();
+        groups = new();
+        wholeProject = null;
+        generalRow = null;
         foreach (var sub in subs)
         {
-            var key = sub.Id.ToString();
-            if (sub.IsArchived && entries.All(e => e.SubKey != key)) continue;
-            breakdown.Add(MakeRow(key, sub.Name, sub.Id, sub.IsArchived ? null : sub.Status, sub.IsArchived));
+            var subKey = sub.Id.ToString();
+            var subRows = entries.Where(e => e.SubKey == subKey).ToList();
+            var subTasks = tasks.Where(t => t.SubcategoryId == sub.Id && (!t.IsArchived || subRows.Any(r => r.TaskId == t.Id))).ToList();
+            if (sub.IsArchived && subRows.Count == 0) continue;
+
+            var parts = subTasks.Select(t => MakePart($"t{t.Id}", t.Name, t.Id, t.Status, t.IsArchived,
+                subRows.Where(r => r.TaskId == t.Id), submissions.Where(c => c.TaskId == t.Id).ToList())).ToList();
+            groups.Add(new GroupRow(sub.Id, sub.Name, sub.IsArchived ? null : sub.Status, sub.IsArchived,
+                Sum(subRows, false), Sum(subRows, true), parts));
         }
 
-        var hasGeneral = entries.Any(e => e.SubKey == GeneralKey);
+        var generalRows = entries.Where(e => e.SubKey == GeneralKey).ToList();
         if (!hasSubcategories)
         {
             // No sub-categories: the whole project is the part that gets checked.
-            if (hasGeneral || submissions.Any(c => c.SubcategoryId is null) || checkerNames.Count > 0)
+            if (generalRows.Count > 0 || submissions.Any(c => c.TaskId == null) || checkerNames.Count > 0)
             {
-                breakdown.Add(MakeRow(GeneralKey, "Whole project", null, project.Status, false));
+                wholeProject = MakePart(ProjectKey, "Whole project", null, project.Status, false, generalRows,
+                    submissions.Where(c => c.TaskId == null).ToList());
             }
         }
-        else if (hasGeneral)
+        else if (generalRows.Count > 0)
         {
-            breakdown.Add(MakeRow(GeneralKey, GeneralName, null, null, false));
+            generalRow = new GroupRow(null, "General (no sub-category)", null, false, Sum(generalRows, false), Sum(generalRows, true), new());
         }
 
-        history = submissions.Select(c =>
+        // Check history: every submission and every review decision, newest first.
+        string PartKeyOf(CheckSubmission c) => c.TaskId is int tid ? $"t{tid}" : ProjectKey;
+        string PartNameOf(CheckSubmission c)
         {
-            var partName = c.SubcategoryId is int sid && subById.TryGetValue(sid, out var s) ? s.Name : "Whole project";
-            var (label, css) = c.Result switch
+            if (c.TaskId is int tid && taskById.TryGetValue(tid, out var t))
             {
-                ProjectOptions.ResultApproved => ("Approved", "completed"),
-                ProjectOptions.ResultReturned => ("Returned", "returned"),
-                _ => c.CheckerId is null ? ("For Checking", "for-checking") : ("Checking", "checking")
-            };
-            return new HistoryRow(c.Id, c.SubcategoryId?.ToString() ?? GeneralKey, partName, c.Round, NameOf(c.SubmittedById), c.SubmittedAt,
-                c.CheckerId is null ? null : NameOf(c.CheckerId), c.ResultAt, label, css, c.Note, c.Comments, c.PdfFileName, c.MarkupFileName);
-        }).ToList();
-        if (historyFilter != "" && history.All(h => h.PartKey != historyFilter))
+                return subById.TryGetValue(t.SubcategoryId, out var s) ? $"{s.Name} › {t.Name}" : t.Name;
+            }
+            return c.SubcategoryId is int sid && subById.TryGetValue(sid, out var sub) ? sub.Name : "Whole project";
+        }
+
+        history = new();
+        foreach (var c in submissions)
+        {
+            var key = PartKeyOf(c);
+            var partName = PartNameOf(c);
+            history.Add(new HistoryRow(key, partName, "Engineer", c.Round, "Submitted", "for-checking", NameOf(c.SubmittedById), c.SubmittedAt, c.Note,
+                new() { new HistoryFile($"/checks/{c.Id}/pdf", c.PdfFileName, false) }));
+
+            if (c.Reviews.Count > 0)
+            {
+                foreach (var r in c.Reviews)
+                {
+                    var (label, css) = (r.Level, r.Result) switch
+                    {
+                        (ProjectOptions.StageChecker, ProjectOptions.ResultSentUp) => ("Sent to Manager", "manager-check"),
+                        (ProjectOptions.StageChecker, _) => ("Returned to engineer", "returned"),
+                        (_, ProjectOptions.ResultApproved) => ("Approved", "completed"),
+                        _ => ("Returned to Checker", "returned-by-manager")
+                    };
+                    var files = new List<HistoryFile>();
+                    if (r.FileStoredName is not null)
+                    {
+                        files.Add(new HistoryFile($"/checks/review/{r.Id}", r.FileName ?? "file.pdf", r.Result != ProjectOptions.ResultSentUp));
+                    }
+                    history.Add(new HistoryRow(key, partName, r.Level == ProjectOptions.StageManager ? "Manager" : "Checker", c.Round, label, css,
+                        NameOf(r.ReviewerId), r.CreatedAt, r.Comments, files));
+                }
+            }
+            else if (c.Result is not null && c.ResultAt is DateTime resultAt)
+            {
+                // Checked before two-level checking: one checker decision stored on the submission.
+                var files = new List<HistoryFile>();
+                if (c.MarkupStoredName is not null)
+                {
+                    files.Add(new HistoryFile($"/checks/{c.Id}/markup", c.MarkupFileName ?? "markup.pdf", true));
+                }
+                history.Add(new HistoryRow(key, partName, "Checker", c.Round, c.Result == ProjectOptions.ResultApproved ? "Approved" : "Returned to engineer",
+                    c.Result == ProjectOptions.ResultApproved ? "completed" : "returned", NameOf(c.CheckerId), resultAt, c.Comments, files));
+            }
+        }
+        history = history.OrderByDescending(h => h.When).ToList();
+        historyParts = history.Select(h => (h.PartKey, h.PartName)).Distinct().OrderBy(x => x.PartName).ToList();
+        if (historyFilter != "" && historyParts.All(p => p.Key != historyFilter))
         {
             historyFilter = "";
         }
@@ -587,21 +678,19 @@
         LockedNote = null;
         if (isEngineer)
         {
-            var openParts = submissions.Where(c => c.IsOpen).Select(c => c.SubcategoryId).ToHashSet();
+            var openParts = submissions.Where(c => c.Result == null).Select(c => c.TaskId).ToHashSet();
             if (hasSubcategories)
             {
-                var active = subs.Where(x => !x.IsArchived).ToList();
-                SubmittableParts = active
-                    .Where(x => ProjectOptions.CanSubmit(x.Status) && !openParts.Contains(x.Id))
-                    .Select(x => new SubmitCheckDialog.SubmitPart(x.Id, x.Name))
+                var activeTasks = tasks.Where(t => !t.IsArchived && subById.TryGetValue(t.SubcategoryId, out var s) && !s.IsArchived).ToList();
+                SubmittableParts = activeTasks
+                    .Where(t => ProjectOptions.CanSubmit(t.Status) && !openParts.Contains(t.Id))
+                    .Select(t => new SubmitCheckDialog.SubmitPart(t.Id, $"{subById[t.SubcategoryId].Name} › {t.Name}"))
                     .ToList();
-                var skipped = active
-                    .Where(x => !SubmittableParts.Any(p => p.Id == x.Id))
-                    .Select(x => $"{x.Name} is {(x.Status == ProjectOptions.StatusApproved ? "approved" : "being checked")}")
-                    .ToList();
-                if (skipped.Count > 0)
+                var inReview = activeTasks.Count(t => ProjectOptions.IsInReview(t.Status));
+                var approved = activeTasks.Count(t => t.Status == ProjectOptions.StatusApproved);
+                if (inReview + approved > 0)
                 {
-                    LockedNote = string.Join(", ", skipped) + (skipped.Count == 1 ? ", so it isn't listed." : ", so they aren't listed.");
+                    LockedNote = $"Tasks being checked ({inReview}) or already approved ({approved}) aren't listed.";
                 }
             }
             else if (ProjectOptions.CanSubmit(project.Status) && !openParts.Contains(null))
@@ -610,11 +699,9 @@
             }
         }
 
-        subFilterOptions = breakdown.Select(b => (b.Key, b.Archived ? $"{b.Name} (archived)" : b.Name)).ToList();
-        if (!hasSubcategories)
-        {
-            subFilterOptions.Clear();
-        }
+        subFilterOptions = hasSubcategories
+            ? subs.Where(s => !s.IsArchived || entries.Any(e => e.SubKey == s.Id.ToString())).Select(s => (s.Id.ToString(), s.IsArchived ? $"{s.Name} (archived)" : s.Name)).ToList()
+            : new();
         if (subFilter != "" && subFilterOptions.All(o => o.Key != subFilter))
         {
             subFilter = "";
@@ -623,10 +710,26 @@
         loaded = true;
     }
 
-    private void OpenSubmit(int? partId)
+    private string NewTaskName(int subcategoryId) =>
+        newTaskNames.TryGetValue(subcategoryId, out var name) ? name : "";
+
+    private void SetNewTaskName(int subcategoryId, ChangeEventArgs e) =>
+        newTaskNames[subcategoryId] = e.Value?.ToString() ?? "";
+
+    private async Task NewTaskKeyDown(int subcategoryId, KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddTask(subcategoryId);
+    }
+
+    private void ShowHistory(string partKey)
+    {
+        historyFilter = partKey;
+    }
+
+    private void OpenSubmit(int? taskId)
     {
         checkMessage = null;
-        submitPartId = partId;
+        submitPartId = taskId;
         showSubmit = true;
     }
 
@@ -641,7 +744,7 @@
         }
     }
 
-    private async Task Reopen(int? subcategoryId)
+    private async Task Reopen(int? taskId)
     {
         if (!isManagerView || isSaving) return;
 
@@ -650,7 +753,7 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
-            var result = await ProjectChecking.ReopenAsync(db, ProjectId, subcategoryId);
+            var result = await ProjectChecking.ReopenAsync(db, ProjectId, taskId);
             checkMessage = result.Ok ? "Reopened. Engineers can work on it again." : result.Error;
             checkMessageIsError = !result.Ok;
             await LoadAsync();
@@ -660,6 +763,52 @@
             Logger.LogError(ex, "Reopening failed.");
             checkMessage = "Couldn't reopen it. Please try again.";
             checkMessageIsError = true;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task AddTask(int subcategoryId)
+    {
+        if (!canAddTasks || isSaving) return;
+
+        var name = (newTaskNames.TryGetValue(subcategoryId, out var n) ? n : "").Trim();
+        if (name.Length == 0) return;
+
+        isSaving = true;
+        subMessage = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var tracked = await db.Projects
+                .Include(p => p.Subcategories).ThenInclude(s => s.Tasks)
+                .FirstOrDefaultAsync(p => p.Id == ProjectId);
+            var sub = tracked?.Subcategories.FirstOrDefault(s => s.Id == subcategoryId);
+            if (tracked is null || sub is null)
+            {
+                subMessage = "That sub-category no longer exists.";
+                return;
+            }
+            if (sub.Tasks.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                subMessage = $"\"{name}\" is already a task under {sub.Name} (it may be archived; restore it from Edit on the Projects page).";
+                return;
+            }
+
+            sub.Tasks.Add(new ProjectTask { ProjectId = ProjectId, Name = name, CreatedAt = Clock.Now });
+
+            // A new task means the sub-category (and project) is no longer complete.
+            ProjectChecking.Recompute(tracked);
+            await db.SaveChangesAsync();
+            newTaskNames.Remove(subcategoryId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Adding task failed.");
+            subMessage = "Couldn't add the task. Please try again.";
         }
         finally
         {
@@ -731,6 +880,7 @@
 
             await db.SaveChangesAsync();
             newSubName = "";
+            subMessage = $"Added {name}. Add its tasks below so engineers can start on it.";
             await LoadAsync();
         }
         catch (Exception ex)
@@ -771,21 +921,21 @@
         }
     }
 
-    private static string FormatShort(TimeSpan span) =>
-        $"{(int)span.TotalHours}:{span.Minutes:D2}";
-
     private static string FormatDuration(TimeSpan span)
     {
         if (span < TimeSpan.Zero) span = TimeSpan.Zero;
         return $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}";
     }
 
-    private sealed record LogRow(string Name, DateTime Start, DateTime? End, TimeSpan Duration, string SubKey, string SubName, string WorkType);
+    private sealed record LogRow(string Name, DateTime Start, DateTime? End, TimeSpan Duration, string SubKey, int? TaskId, string PartName, string WorkType);
 
-    private sealed record BreakdownRow(string Key, string Name, int? SubcategoryId, string? Status, TimeSpan Modeling, TimeSpan Checking,
-        string People, bool Archived, int Round, string? CheckerNote, int? OpenSubmissionId, bool IsChecking);
+    private sealed record PartRowData(string Key, string Name, int? TaskId, string Status, string StageLabel, string StageCss, string With,
+        TimeSpan Modeling, TimeSpan Checking, bool Archived, int Round, int? OpenSubmissionId);
 
-    private sealed record HistoryRow(int Id, string PartKey, string PartName, int Round, string SubmittedBy, DateTime SubmittedAt,
-        string? CheckerName, DateTime? ResultAt, string ResultLabel, string ResultCss, string? Note, string? Comments,
-        string PdfFileName, string? MarkupFileName);
+    private sealed record GroupRow(int? SubcategoryId, string Name, string? Status, bool Archived, TimeSpan Modeling, TimeSpan Checking, List<PartRowData> Tasks);
+
+    private sealed record HistoryFile(string Url, string Name, bool IsMarkup);
+
+    private sealed record HistoryRow(string PartKey, string PartName, string Level, int Round, string Label, string Css, string Who, DateTime When,
+        string? Text, List<HistoryFile> Files);
 }

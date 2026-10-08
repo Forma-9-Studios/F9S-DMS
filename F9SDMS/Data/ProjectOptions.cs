@@ -21,13 +21,32 @@
         public const string StatusReturned = "Returned";
         public const string StatusCompleted = "Completed";
 
+        /// <summary>The checker sent it up; waiting for the project manager's final check.</summary>
+        public const string StatusManagerCheck = "Manager Check";
+
+        /// <summary>The project manager sent it back to the checker.</summary>
+        public const string StatusReturnedByManager = "Returned by Manager";
+
         /// <summary>Sub-category (part) status once a checker approves it.</summary>
         public const string StatusApproved = "Approved";
 
         public static readonly string[] Statuses =
         {
-            StatusUnassigned, StatusAssigned, StatusInProgress, StatusForChecking, StatusReturned, StatusCompleted
+            StatusUnassigned, StatusAssigned, StatusInProgress, StatusForChecking, StatusManagerCheck,
+            StatusReturnedByManager, StatusReturned, StatusCompleted
         };
+
+        /// <summary>Statuses where a part is with a reviewer (checker or project manager).</summary>
+        public static bool IsInReview(string status) =>
+            status == StatusForChecking || status == StatusManagerCheck || status == StatusReturnedByManager;
+
+        /// <summary>Review stages of a submission.</summary>
+        public const string StageChecker = "Checker";
+        public const string StageManager = "Manager";
+        public const string StageClosed = "Closed";
+
+        /// <summary>Review results (CheckReview.Result).</summary>
+        public const string ResultSentUp = "Sent to Manager";
 
         /// <summary>Roles a person can have on a project.</summary>
         public const string RoleEngineer = "Engineer";
@@ -46,7 +65,7 @@
         /// or already approved can't be picked as an engineer's status.
         /// </summary>
         public static bool IsLocked(string status) =>
-            status == StatusForChecking || status == StatusApproved || status == StatusCompleted;
+            IsInReview(status) || status == StatusApproved || status == StatusCompleted;
 
         /// <summary>A part can be submitted for checking from these statuses.</summary>
         public static bool CanSubmit(string status) =>
@@ -58,6 +77,8 @@
             StatusAssigned => "assigned",
             StatusInProgress => "in-progress",
             StatusForChecking => "for-checking",
+            StatusManagerCheck => "manager-check",
+            StatusReturnedByManager => "returned-by-manager",
             StatusReturned => "returned",
             StatusApproved => "completed",
             StatusCompleted => "completed",

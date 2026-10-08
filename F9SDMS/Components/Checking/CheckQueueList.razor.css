@@ -1,0 +1,218 @@
+﻿.queue-list {
+    border-radius: 12px;
+    border: 1px solid #e5e9eb;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.queue-row {
+    border-bottom: 1px solid #eef1f2;
+}
+
+    .queue-row:last-child {
+        border-bottom: none;
+    }
+
+    .queue-row.current {
+        box-shadow: inset 3px 0 0 #6e56cf;
+    }
+
+.queue-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+}
+
+    .queue-main:hover {
+        background: #f8fafa;
+    }
+
+.queue-tag {
+    flex-shrink: 0;
+    min-width: 84px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+}
+
+    .queue-tag.waiting,
+    .queue-tag.checking { background: #e2ecfb; color: #2a5ea8; }
+    .queue-tag.manager { background: #ece8fb; color: #5a45b8; }
+    .queue-tag.returned { background: #fbf0d6; color: #7a5510; }
+
+.queue-text {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.queue-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #0c1a27;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-sub {
+    font-size: 11.5px;
+    color: #606060;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-now {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: #6e56cf;
+}
+
+.queue-start,
+.queue-review {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.queue-start {
+    border: 1px solid #098993;
+    background: transparent;
+    color: #098993;
+}
+
+    .queue-start:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+
+.queue-review {
+    border: none;
+    background: #2a5ea8;
+    color: #ffffff;
+}
+
+    .queue-review.manager {
+        background: #6e56cf;
+    }
+
+.queue-chevron {
+    flex-shrink: 0;
+    width: 14px;
+    color: #8b98a3;
+    font-size: 16px;
+    transition: transform 0.15s ease;
+}
+
+    .queue-chevron.open {
+        transform: rotate(90deg);
+    }
+
+.queue-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 14px 12px 108px;
+}
+
+.queue-note {
+    padding: 7px 10px;
+    border-radius: 6px;
+    border-left: 3px solid #c9bdf2;
+    background: #f6f8f9;
+    font-size: 12.5px;
+    color: #3d4f5c;
+    overflow-wrap: anywhere;
+}
+
+    .queue-note.returned {
+        border-left-color: #e0b04a;
+        background: #fdf6e4;
+        color: #6b4c0c;
+    }
+
+.queue-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+    .queue-links a {
+        color: #098993;
+        text-decoration: none;
+        overflow-wrap: anywhere;
+    }
+
+        .queue-links a:hover {
+            text-decoration: underline;
+        }
+
+@media (max-width: 700px) {
+    .queue-detail {
+        padding-left: 14px;
+    }
+}
+
+.dark-mode .queue-list {
+    border-color: #223244;
+    background: #131f2e;
+}
+
+.dark-mode .queue-row {
+    border-bottom-color: #1c2c3d;
+}
+
+.dark-mode .queue-main:hover {
+    background: #16232f;
+}
+
+.dark-mode .queue-tag.waiting,
+.dark-mode .queue-tag.checking { background: #1c3560; color: #8db8f2; }
+.dark-mode .queue-tag.manager { background: #33285a; color: #c4b0ff; }
+.dark-mode .queue-tag.returned { background: #4a3a14; color: #f0c96a; }
+
+.dark-mode .queue-title {
+    color: #e8edf0;
+}
+
+.dark-mode .queue-sub {
+    color: #8b98a3;
+}
+
+.dark-mode .queue-now {
+    color: #c4b0ff;
+}
+
+.dark-mode .queue-start {
+    border-color: #14a3ad;
+    color: #5fd3da;
+}
+
+.dark-mode .queue-note {
+    background: #0f1c29;
+    border-left-color: #4a3d80;
+    color: #c6d3dc;
+}
+
+    .dark-mode .queue-note.returned {
+        background: #2a2412;
+        border-left-color: #a0700f;
+        color: #f0c96a;
+    }
+
+.dark-mode .queue-links a {
+    color: #5fd3da;
+}

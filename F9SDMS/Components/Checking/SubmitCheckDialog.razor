@@ -27,7 +27,7 @@
                 @if (HasSubcategories)
                 {
                     <div class="check-field">
-                        <label for="checkPart" class="check-label">Sub-category <span class="req">*</span></label>
+                        <label for="checkPart" class="check-label">Task <span class="req">*</span></label>
                         <select id="checkPart" class="check-input" @bind="selectedPart" disabled="@busy">
                             @foreach (var part in Parts)
                             {
@@ -57,7 +57,10 @@
                 <span><strong>@SelectedName</strong> will be locked while it's being checked. Nobody can pick it as their status until the checker returns it, and anyone working on it now is stopped.</span>
             </div>
 
-            <div class="check-hint">@(CheckerNames.Contains(',') ? "Checkers" : "Checker") for this project: <strong>@(string.IsNullOrEmpty(CheckerNames) ? "none yet" : CheckerNames)</strong></div>
+            <div class="check-hint">
+                Goes to the checker (<strong>@(string.IsNullOrEmpty(CheckerNames) ? "none yet" : CheckerNames)</strong>),
+                then to <strong>@(string.IsNullOrEmpty(ManagerName) ? "the project manager" : ManagerName)</strong> for the final check.
+            </div>
 
             @if (error is not null)
             {
@@ -75,7 +78,7 @@
 </div>
 
 @code {
-    /// <summary>A part the engineer can submit; Id is null for a project without sub-categories.</summary>
+    /// <summary>A part the engineer can submit: Id is the task id, or null for a project without sub-categories.</summary>
     public sealed record SubmitPart(int? Id, string Name);
 
     [Parameter, EditorRequired] public int ProjectId { get; set; }
@@ -84,8 +87,9 @@
     [Parameter, EditorRequired] public IReadOnlyList<SubmitPart> Parts { get; set; } = Array.Empty<SubmitPart>();
     [Parameter] public int? InitialPartId { get; set; }
     [Parameter] public string CheckerNames { get; set; } = "";
+    [Parameter] public string? ManagerName { get; set; }
 
-    /// <summary>Explains why some sub-categories aren't listed.</summary>
+    /// <summary>Explains why some tasks aren't listed.</summary>
     [Parameter] public string? LockedNote { get; set; }
 
     /// <summary>Called with a success message, or null when cancelled.</summary>

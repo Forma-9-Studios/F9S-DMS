@@ -1311,3 +1311,380 @@
 .dark-mode .dashboard-page .my-project-sub.part-for-checking { background: #1c3560; color: #8db8f2; }
 .dark-mode .dashboard-page .my-project-sub.part-returned { background: #4d2222; color: #ff9d92; }
 .dark-mode .dashboard-page .my-project-sub.part-completed { background: #16452e; color: #6fd39b; }
+
+/* ---- Tasks in the status menu ---- */
+.status-dropdown-subgroup {
+    padding: 6px 18px 2px 30px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #c6d3dc;
+}
+
+.status-dropdown-task {
+    padding-left: 44px;
+}
+
+.status-dropdown-note.status-dropdown-task {
+    padding-left: 44px;
+}
+
+.admin-queue {
+    max-width: 640px;
+    margin-bottom: 32px;
+}
+
+.status-manager-check { background: #ece8fb; color: #5a45b8; }
+.status-returned-by-manager { background: #fbf0d6; color: #7a5510; }
+.dark-mode .dashboard-page .status-manager-check { background: #33285a; color: #c4b0ff; }
+.dark-mode .dashboard-page .status-returned-by-manager { background: #4a3a14; color: #f0c96a; }
+
+/* ---- Work returned to the engineer ---- */
+.returned-count {
+    margin-left: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: #fbe4e1;
+    color: #a5372f;
+    font-size: 12px;
+    vertical-align: middle;
+}
+
+.returned-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 28px;
+}
+
+.returned-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #f0b7b0;
+    color: #0c1a27;
+}
+
+.returned-comments {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border-left: 3px solid #d0574d;
+    background: #fdf3f2;
+    font-size: 13px;
+    color: #6b2a24;
+    overflow-wrap: anywhere;
+}
+
+.returned-open {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #dde3e5;
+    color: #0c1a27;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.status-dropdown-lock.returned {
+    background: rgba(255, 157, 146, 0.18);
+    color: #ff9d92;
+}
+
+.dark-mode .dashboard-page .returned-count {
+    background: #4d2222;
+    color: #ff9d92;
+}
+
+.dark-mode .dashboard-page .returned-card {
+    background: #131f2e;
+    border-color: #6b2f2a;
+    color: #e8edf0;
+}
+
+.dark-mode .dashboard-page .returned-comments {
+    background: #2a1618;
+    border-left-color: #ff9d92;
+    color: #ffbdb5;
+}
+
+.dark-mode .dashboard-page .returned-open {
+    border-color: #2c4356;
+    color: #e8edf0;
+}
+
+/* ---- Right-hand tabs (My Projects / Returned / To check) ---- */
+.dash-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    width: fit-content;
+    max-width: 100%;
+    margin-bottom: 14px;
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid #e5e9eb;
+    background: #f4f6f7;
+}
+
+.dash-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: #606060;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+    .dash-tab.active {
+        background: #ffffff;
+        color: #0c1a27;
+        box-shadow: 0 1px 3px rgba(12, 26, 39, 0.12);
+    }
+
+.dash-tab-count {
+    padding: 0 7px;
+    border-radius: 999px;
+    background: #e5e9eb;
+    color: #606060;
+    font-size: 11.5px;
+}
+
+    .dash-tab-count.returned {
+        background: #fbe4e1;
+        color: #a5372f;
+    }
+
+    .dash-tab-count.check {
+        background: #ece8fb;
+        color: #5a45b8;
+    }
+
+.dash-list {
+    border-radius: 12px;
+    border: 1px solid #e5e9eb;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.dash-row {
+    border-bottom: 1px solid #eef1f2;
+}
+
+    .dash-row:last-child {
+        border-bottom: none;
+    }
+
+.dash-row-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+}
+
+    .dash-row-main:hover {
+        background: #f8fafa;
+    }
+
+.dash-tag {
+    flex-shrink: 0;
+    min-width: 84px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+}
+
+    .dash-tag.returned {
+        background: #fbe4e1;
+        color: #a5372f;
+    }
+
+.dash-row-text {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.dash-row-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #0c1a27;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dash-row-sub {
+    font-size: 11.5px;
+    color: #606060;
+}
+
+.dash-row-btn {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 7px;
+    background: #098993;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+    .dash-row-btn:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
+
+.dash-row-now {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: #098993;
+}
+
+.dash-chevron {
+    flex-shrink: 0;
+    width: 14px;
+    color: #8b98a3;
+    font-size: 16px;
+    transition: transform 0.15s ease;
+}
+
+    .dash-chevron.open {
+        transform: rotate(90deg);
+    }
+
+.dash-row-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 14px 12px 108px;
+}
+
+.dash-row-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+    .dash-row-links a {
+        color: #098993;
+        text-decoration: none;
+    }
+
+        .dash-row-links a:hover {
+            text-decoration: underline;
+        }
+
+.chip-count {
+    color: #7a8892;
+    font-weight: 600;
+}
+
+.chip-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 5px;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+
+    .chip-dot.returned {
+        background: #d0574d;
+    }
+
+    .chip-dot.review {
+        background: #4a86d6;
+    }
+
+@media (max-width: 700px) {
+    .dash-row-detail {
+        padding-left: 14px;
+    }
+}
+
+.dark-mode .dashboard-page .dash-tabs {
+    border-color: #223244;
+    background: #0f1c29;
+}
+
+.dark-mode .dashboard-page .dash-tab {
+    color: #8b98a3;
+}
+
+    .dark-mode .dashboard-page .dash-tab.active {
+        background: #1b2b3c;
+        color: #ffffff;
+        box-shadow: none;
+    }
+
+.dark-mode .dashboard-page .dash-tab-count {
+    background: #223244;
+    color: #c6d3dc;
+}
+
+    .dark-mode .dashboard-page .dash-tab-count.returned {
+        background: #4d2222;
+        color: #ff9d92;
+    }
+
+    .dark-mode .dashboard-page .dash-tab-count.check {
+        background: #33285a;
+        color: #c4b0ff;
+    }
+
+.dark-mode .dashboard-page .dash-list {
+    border-color: #223244;
+    background: #131f2e;
+}
+
+.dark-mode .dashboard-page .dash-row {
+    border-bottom-color: #1c2c3d;
+}
+
+.dark-mode .dashboard-page .dash-row-main:hover {
+    background: #16232f;
+}
+
+.dark-mode .dashboard-page .dash-tag.returned {
+    background: #4d2222;
+    color: #ff9d92;
+}
+
+.dark-mode .dashboard-page .dash-row-title {
+    color: #e8edf0;
+}
+
+.dark-mode .dashboard-page .dash-row-sub,
+.dark-mode .dashboard-page .chip-count {
+    color: #8b98a3;
+}
+
+.dark-mode .dashboard-page .dash-row-now,
+.dark-mode .dashboard-page .dash-row-links a {
+    color: #5fd3da;
+}
+
+.dark-mode .dashboard-page .chip-dot.returned {
+    background: #ff9d92;
+}
+
+.dark-mode .dashboard-page .chip-dot.review {
+    background: #8db8f2;
+}
