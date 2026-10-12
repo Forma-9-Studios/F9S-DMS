@@ -433,11 +433,22 @@
 
 .visually-hidden {
     position: absolute;
+    top: 0;
+    left: 0;
     width: 1px;
     height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
+}
+
+.dark-mode .notes-input {
+    background: #0f1c29;
+    border: 1px solid #2c4356;
+    color: #e8edf0;
 }
 
 .dark-mode .breakdown-card {
@@ -1026,3 +1037,283 @@
 .dark-mode .part-manager-check { background: #33285a; color: #c4b0ff; }
 .dark-mode .part-returned-by-manager { background: #4a3a14; color: #f0c96a; }
 .dark-mode .history-dot.result-returned-by-manager { background: #f0c96a; }
+
+/* ---- Details card follows the theme: light card in light mode, navy card in dark mode ---- */
+.details-card {
+    background: #ffffff;
+    border: 1px solid #e5e9eb;
+    color: #0c1a27;
+}
+
+.detail-row {
+    border-bottom-color: #eef1f2;
+    color: #3d4f5c;
+}
+
+.detail-label,
+.notes-label {
+    color: #0c1a27;
+}
+
+.overdue {
+    color: #b3413a;
+}
+
+.person-chip {
+    background: #eef2f3;
+    color: #0c1a27;
+}
+
+    .person-chip.checker {
+        background: #ece8fb;
+        color: #5a45b8;
+    }
+
+.notes-input {
+    background: #f6f8f9;
+    border: 1px solid #d3dade;
+}
+
+    .notes-input:focus {
+        outline: none;
+        border-color: #098993;
+        box-shadow: 0 0 0 3px rgba(9, 137, 147, 0.2);
+    }
+
+.save-message {
+    color: #066b73;
+}
+
+.status-unassigned { background: #eceff1; color: #4a5a66; }
+.status-assigned { background: #fbf0d6; color: #7a5510; }
+.status-in-progress { background: #dff2f3; color: #066b73; }
+.status-for-checking { background: #e2ecfb; color: #2a5ea8; }
+.status-completed { background: #e3f4ea; color: #1d6b3f; }
+.status-returned { background: #fbe4e1; color: #a5372f; }
+.status-manager-check { background: #ece8fb; color: #5a45b8; }
+.status-returned-by-manager { background: #fbf0d6; color: #7a5510; }
+
+.dark-mode .details-card {
+    background: #16303d;
+    border-color: transparent;
+    color: #e8edf0;
+}
+
+.dark-mode .detail-row {
+    border-bottom-color: #2b4a5a;
+    color: #d9e4ea;
+}
+
+.dark-mode .detail-label,
+.dark-mode .notes-label {
+    color: #ffffff;
+}
+
+.dark-mode .overdue {
+    color: #f0928a;
+}
+
+.dark-mode .person-chip {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e8edf0;
+}
+
+    .dark-mode .person-chip.checker {
+        background: rgba(160, 135, 255, 0.22);
+        color: #e8edf0;
+    }
+
+.dark-mode .notes-input {
+    background: #0f1c29;
+    border-color: #2c4356;
+    color: #e8edf0;
+}
+
+    .dark-mode .notes-input:focus {
+        border-color: #14a3ad;
+    }
+
+.dark-mode .save-message {
+    color: #9fd6da;
+}
+
+.dark-mode .status-unassigned { background: #2a3a47; color: #c6d3dc; }
+.dark-mode .status-assigned { background: #4a3a14; color: #f0c96a; }
+.dark-mode .status-in-progress { background: #0c4a50; color: #5fd0d8; }
+.dark-mode .status-for-checking { background: #1c3560; color: #8db8f2; }
+.dark-mode .status-completed { background: #16452e; color: #6fd39b; }
+.dark-mode .status-returned { background: #4d2222; color: #ff9d92; }
+.dark-mode .status-manager-check { background: #33285a; color: #c4b0ff; }
+.dark-mode .status-returned-by-manager { background: #4a3a14; color: #f0c96a; }
+
+/* Sub-category rows and task rows share the same side padding so the columns line up. */
+.task-grid {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+/* ---- Hours by sub-category (bars above the tasks table) ---- */
+.hours-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    border: 1px solid #e5e9eb;
+    background: #ffffff;
+}
+
+.hours-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+    .hours-card-header h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: #0c1a27;
+    }
+
+.hours-legend {
+    display: flex;
+    gap: 14px;
+    font-size: 12px;
+    color: #606060;
+}
+
+    .hours-legend > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+.legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+}
+
+    .legend-swatch.modeling,
+    .hours-fill.modeling {
+        background: #098993;
+    }
+
+    .legend-swatch.checking,
+    .hours-fill.checking {
+        background: #7c63d8;
+    }
+
+.hours-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 180px) minmax(0, 1fr) minmax(150px, auto);
+    gap: 14px;
+    align-items: center;
+}
+
+.hours-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0c1a27;
+    overflow-wrap: anywhere;
+}
+
+.hours-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.hours-bar {
+    display: flex;
+    height: 12px;
+    border-radius: 999px;
+    background: #e8eef0;
+    overflow: hidden;
+}
+
+.hours-fill {
+    height: 100%;
+}
+
+.hours-people {
+    font-size: 12px;
+    color: #606060;
+    overflow-wrap: anywhere;
+}
+
+.hours-total {
+    text-align: right;
+    font-size: 13px;
+    color: #0c1a27;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.hours-split {
+    color: #7a8892;
+}
+
+    .hours-split .checking {
+        color: #5a45b8;
+    }
+
+.hours-card .hours-summary {
+    padding-top: 10px;
+    border-top: 1px solid #eef1f2;
+}
+
+@media (max-width: 800px) {
+    .hours-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .hours-bar-wrap {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+}
+
+.dark-mode .hours-card {
+    background: #131f2e;
+    border-color: #223244;
+}
+
+    .dark-mode .hours-card-header h2,
+    .dark-mode .hours-name,
+    .dark-mode .hours-total {
+        color: #e8edf0;
+    }
+
+.dark-mode .hours-legend,
+.dark-mode .hours-people,
+.dark-mode .hours-split {
+    color: #8b98a3;
+}
+
+    .dark-mode .hours-split .checking {
+        color: #c4b0ff;
+    }
+
+.dark-mode .hours-bar {
+    background: #1b2b3c;
+}
+
+.dark-mode .legend-swatch.modeling,
+.dark-mode .hours-fill.modeling {
+    background: #14a3ad;
+}
+
+.dark-mode .legend-swatch.checking,
+.dark-mode .hours-fill.checking {
+    background: #a087ff;
+}
+
+.dark-mode .hours-card .hours-summary {
+    border-top-color: #223244;
+}

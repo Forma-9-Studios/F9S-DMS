@@ -1688,3 +1688,13 @@
 .dark-mode .dashboard-page .chip-dot.review {
     background: #8db8f2;
 }
+
+.dark-mode .dashboard-page .edit-status.success {
+    background: #12261f;
+    color: #7fdca0;
+}
+
+.dark-mode .dashboard-page .edit-status.error {
+    background: #4d2222;
+    color: #ffbdb5;
+}

@@ -552,6 +552,11 @@
     private bool isAdmin = false;
     private bool isManager = false;
     private int adminRefreshCounter = 0;
+    private int projectsRefreshCounter = 0;
+    private bool _isRefreshingProjects;
+    private const int ProjectsRefreshSeconds = 10;
+    private string? _shownMessage;
+    private int _messageSeconds;
     private bool canViewTeamStatus = false;
     private HashSet<string> activeEmployeeIds = new();
 
@@ -774,7 +779,41 @@
                 {
                     heartbeatCounter = 0;
                     await SendHeartbeat();
-                    await LoadMyProjects();
+                }
+            }
+
+            // Confirmation messages disappear on their own (errors stay a little longer).
+            if (checkMessage is not null)
+            {
+                if (checkMessage != _shownMessage)
+                {
+                    _shownMessage = checkMessage;
+                    _messageSeconds = 0;
+                }
+                else if (++_messageSeconds >= (checkMessageIsError ? 10 : 6))
+                {
+                    checkMessage = null;
+                    _shownMessage = null;
+                }
+            }
+
+            // Refresh projects, returned work and the To check list every few seconds so new
+            // assignments and checking changes show up quickly.
+            if (!isAdmin && currentUserId is not null)
+            {
+                projectsRefreshCounter++;
+                if (projectsRefreshCounter >= ProjectsRefreshSeconds && !_isRefreshingProjects)
+                {
+                    projectsRefreshCounter = 0;
+                    _isRefreshingProjects = true;
+                    try
+                    {
+                        await LoadMyProjects();
+                    }
+                    finally
+                    {
+                        _isRefreshingProjects = false;
+                    }
                 }
             }
 

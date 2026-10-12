@@ -105,6 +105,48 @@
                 <div class="check-banner @(checkMessageIsError ? "error" : "")" role="status">@checkMessage</div>
             }
 
+            @if (hourRows.Count > 0)
+            {
+                <div class="hours-card">
+                    <div class="hours-card-header">
+                        <h2>@(hasSubcategories ? "Hours by sub-category" : "Hours")</h2>
+                        <div class="hours-legend" aria-hidden="true">
+                            <span><span class="legend-swatch modeling"></span>Modeling</span>
+                            <span><span class="legend-swatch checking"></span>Checking</span>
+                        </div>
+                    </div>
+                    @foreach (var h in hourRows)
+                    {
+                        <div class="hours-row">
+                            <span class="hours-name">@h.Name</span>
+                            <div class="hours-bar-wrap">
+                                <div class="hours-bar" role="img" aria-label="@($"{h.Name}: {Hm(h.Modeling)} modeling, {Hm(h.Checking)} checking")">
+                                    <div class="hours-fill modeling" style="width: @HoursPercent(h.Modeling)%"></div>
+                                    <div class="hours-fill checking" style="width: @HoursPercent(h.Checking)%"></div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(h.People))
+                                {
+                                    <span class="hours-people">@h.People</span>
+                                }
+                            </div>
+                            <span class="hours-total">
+                                <strong>@FormatDuration(h.Modeling + h.Checking)</strong>
+                                <span class="hours-split">(@Hm(h.Modeling) + <span class="checking">@Hm(h.Checking)</span>)</span>
+                            </span>
+                        </div>
+                    }
+                    <div class="hours-summary">
+                        <span>Modeling <strong>@FormatDuration(ModelingTotal)</strong></span>
+                        <span class="checking-hours">Checking <strong>@FormatDuration(CheckingTotal)</strong></span>
+                        <span>Total <strong>@FormatDuration(TotalDuration)</strong></span>
+                        @if (hasSubcategories)
+                        {
+                            <span class="hours-summary-note">@ApprovedTaskCount of @ActiveTaskCount tasks approved · @ApprovedSubCount of @ActiveSubCount sub-categories approved</span>
+                        }
+                    </div>
+                </div>
+            }
+
             <div class="breakdown-card">
                 <div class="breakdown-header">
                     <h2>@(hasSubcategories ? "Sub-categories and tasks" : "Hours and checking")</h2>
@@ -124,16 +166,6 @@
                             </button>
                         }
                     </div>
-                </div>
-
-                <div class="hours-summary">
-                    <span>Modeling <strong>@FormatDuration(ModelingTotal)</strong></span>
-                    <span class="checking-hours">Checking <strong>@FormatDuration(CheckingTotal)</strong></span>
-                    <span>Total <strong>@FormatDuration(TotalDuration)</strong></span>
-                    @if (hasSubcategories)
-                    {
-                        <span class="hours-summary-note">@ApprovedTaskCount of @ActiveTaskCount tasks approved · @ApprovedSubCount of @ActiveSubCount sub-categories approved</span>
-                    }
                 </div>
 
                 @if (!hasSubcategories && wholeProject is null)
@@ -390,6 +422,7 @@
     private List<GroupRow> groups = new();
     private PartRowData? wholeProject;
     private GroupRow? generalRow;
+    private List<HourRow> hourRows = new();
     private List<HistoryRow> history = new();
     private List<(string Key, string Name)> historyParts = new();
     private List<SubmitCheckDialog.SubmitPart> SubmittableParts = new();
@@ -615,6 +648,27 @@
             generalRow = new GroupRow(null, "General (no sub-category)", null, false, Sum(generalRows, false), Sum(generalRows, true), new());
         }
 
+        // Hours by sub-category (the bars above the tasks table).
+        string PeopleOf(IEnumerable<LogRow> rows) => string.Join(" · ", rows
+            .GroupBy(r => r.Name)
+            .Select(g => (Name: g.Key, Hours: g.Aggregate(TimeSpan.Zero, (acc, r) => acc + r.Duration)))
+            .OrderByDescending(x => x.Hours)
+            .Select(x => $"{x.Name} {Hm(x.Hours)}"));
+
+        hourRows = new();
+        foreach (var sub in subs)
+        {
+            var subKey = sub.Id.ToString();
+            var subRows = entries.Where(e => e.SubKey == subKey).ToList();
+            if (sub.IsArchived && subRows.Count == 0) continue;
+            hourRows.Add(new HourRow(sub.IsArchived ? $"{sub.Name} (archived)" : sub.Name, Sum(subRows, false), Sum(subRows, true), PeopleOf(subRows)));
+        }
+        if (generalRows.Count > 0)
+        {
+            hourRows.Add(new HourRow(hasSubcategories ? "General (no sub-category)" : "Whole project",
+                Sum(generalRows, false), Sum(generalRows, true), PeopleOf(generalRows)));
+        }
+
         // Check history: every submission and every review decision, newest first.
         string PartKeyOf(CheckSubmission c) => c.TaskId is int tid ? $"t{tid}" : ProjectKey;
         string PartNameOf(CheckSubmission c)
@@ -721,6 +775,55 @@
         if (e.Key == "Enter") await AddTask(subcategoryId);
     }
 
+    /// <summary>Shows a confirmation above the tasks table that disappears on its own.</summary>
+    private void ShowMessage(string? message, bool isError)
+    {
+        checkMessage = message;
+        checkMessageIsError = isError;
+        if (message is null) return;
+
+        var shown = message;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(isError ? 10000 : 6000);
+                await InvokeAsync(() =>
+                {
+                    if (checkMessage == shown)
+                    {
+                        checkMessage = null;
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+                // The page was closed in the meantime.
+            }
+        });
+    }
+
+    private async Task ClearSaveMessageLater(string shown)
+    {
+        try
+        {
+            await Task.Delay(4000);
+            await InvokeAsync(() =>
+            {
+                if (saveMessage == shown)
+                {
+                    saveMessage = null;
+                    StateHasChanged();
+                }
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // The page was closed in the meantime.
+        }
+    }
+
     private void ShowHistory(string partKey)
     {
         historyFilter = partKey;
@@ -738,9 +841,8 @@
         showSubmit = false;
         if (message is not null)
         {
-            checkMessage = message;
-            checkMessageIsError = false;
             await LoadAsync();
+            ShowMessage(message, false);
         }
     }
 
@@ -754,15 +856,13 @@
         {
             await using var db = await DbFactory.CreateDbContextAsync();
             var result = await ProjectChecking.ReopenAsync(db, ProjectId, taskId);
-            checkMessage = result.Ok ? "Reopened. Engineers can work on it again." : result.Error;
-            checkMessageIsError = !result.Ok;
             await LoadAsync();
+            ShowMessage(result.Ok ? "Reopened. Engineers can work on it again." : result.Error, !result.Ok);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Reopening failed.");
-            checkMessage = "Couldn't reopen it. Please try again.";
-            checkMessageIsError = true;
+            ShowMessage("Couldn't reopen it. Please try again.", true);
         }
         finally
         {
@@ -831,6 +931,7 @@
                 tracked.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
                 await db.SaveChangesAsync();
                 saveMessage = "Saved";
+                _ = ClearSaveMessageLater("Saved");
             }
         }
         catch (Exception ex)
@@ -921,6 +1022,20 @@
         }
     }
 
+    // Bars are scaled to the biggest row so the sub-categories compare against each other.
+    private string HoursPercent(TimeSpan hours)
+    {
+        var max = hourRows.Count == 0 ? 0 : hourRows.Max(h => (h.Modeling + h.Checking).TotalSeconds);
+        var percent = max <= 0 ? 0 : Math.Round(hours.TotalSeconds / max * 100, 1);
+        return percent.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string Hm(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        return $"{(int)span.TotalHours:D2}:{span.Minutes:D2}";
+    }
+
     private static string FormatDuration(TimeSpan span)
     {
         if (span < TimeSpan.Zero) span = TimeSpan.Zero;
@@ -933,6 +1048,8 @@
         TimeSpan Modeling, TimeSpan Checking, bool Archived, int Round, int? OpenSubmissionId);
 
     private sealed record GroupRow(int? SubcategoryId, string Name, string? Status, bool Archived, TimeSpan Modeling, TimeSpan Checking, List<PartRowData> Tasks);
+
+    private sealed record HourRow(string Name, TimeSpan Modeling, TimeSpan Checking, string People);
 
     private sealed record HistoryFile(string Url, string Name, bool IsMarkup);
 

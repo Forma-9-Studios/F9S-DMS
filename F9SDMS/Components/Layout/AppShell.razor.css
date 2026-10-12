@@ -74,6 +74,9 @@
 }
 
 .main-content {
+    /* Keeps hidden labels and other absolutely positioned bits inside the scrolling area,
+       so they can't make the whole page taller than the window. */
+    position: relative;
     flex-grow: 1;
     min-width: 0;
     height: 100vh;

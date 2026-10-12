@@ -1,5 +1,8 @@
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    /* The app shell fills the window exactly; any browser margin would add a second scrollbar. */
+    margin: 0;
+    padding: 0;
 }
 
 a, .btn-link {
