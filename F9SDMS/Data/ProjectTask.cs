@@ -32,5 +32,14 @@ namespace F9SDMS.Data
         public string Status { get; set; } = ProjectOptions.StatusInProgress;
 
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>
+        /// When the task is due (date only). Required for new tasks; can't be after the project's
+        /// due date. Assignees and the project manager are reminded the working day before.
+        /// </summary>
+        public DateTime? Deadline { get; set; }
+
+        /// <summary>Engineers assigned to this task (they get the deadline reminders).</summary>
+        public List<TaskAssignee> Assignees { get; set; } = new();
     }
 }

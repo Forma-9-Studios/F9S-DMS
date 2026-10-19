@@ -86,6 +86,9 @@ namespace F9SDMS.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("StartDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("INTEGER");
 
@@ -121,8 +124,14 @@ namespace F9SDMS.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsOvertime")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LastSeenTime")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("LimitMinutes")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -264,6 +273,263 @@ namespace F9SDMS.Migrations
                     b.ToTable("CheckSubmissions");
                 });
 
+            modelBuilder.Entity("F9SDMS.Data.LeaveAdjustment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Days")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LeaveType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId", "Year");
+
+                    b.ToTable("LeaveAdjustments");
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.LeavePolicy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("CarryOverMaxDays")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("SickDaysPerYear")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("VacationDaysPerYear")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("VacationNoticeDays")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LeavePolicies");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CarryOverMaxDays = 5.0,
+                            SickDaysPerYear = 10.0,
+                            VacationDaysPerYear = 15.0,
+                            VacationNoticeDays = 3
+                        });
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.LeaveRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("CreditDays")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecidedById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HalfDayPart")
+                        .HasMaxLength(2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsHalfDay")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LeaveType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("TotalDays")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("UnpaidDays")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("EmployeeId", "StartDate");
+
+                    b.ToTable("LeaveRequests");
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TaskId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("UserId", "ReadAt");
+
+                    b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.OvertimeRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecidedById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeSpan?>("EndTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeSpan?>("StartTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("EmployeeId", "Date");
+
+                    b.ToTable("OvertimeRequests");
+                });
+
             modelBuilder.Entity("F9SDMS.Data.Project", b =>
                 {
                     b.Property<int>("Id")
@@ -382,6 +648,9 @@ namespace F9SDMS.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("Deadline")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsArchived")
                         .HasColumnType("INTEGER");
 
@@ -455,6 +724,29 @@ namespace F9SDMS.Migrations
                     b.HasIndex("EmployeeId", "EndTime");
 
                     b.ToTable("ProjectTimeEntries");
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.TaskAssignee", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TaskId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TaskId", "EmployeeId")
+                        .IsUnique();
+
+                    b.ToTable("TaskAssignees");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -621,6 +913,16 @@ namespace F9SDMS.Migrations
                     b.Navigation("Task");
                 });
 
+            modelBuilder.Entity("F9SDMS.Data.OvertimeRequest", b =>
+                {
+                    b.HasOne("F9SDMS.Data.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("F9SDMS.Data.ProjectAssignment", b =>
                 {
                     b.HasOne("F9SDMS.Data.Project", "Project")
@@ -683,6 +985,17 @@ namespace F9SDMS.Migrations
                     b.Navigation("Project");
 
                     b.Navigation("Subcategory");
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.TaskAssignee", b =>
+                {
+                    b.HasOne("F9SDMS.Data.ProjectTask", "Task")
+                        .WithMany("Assignees")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Task");
                 });
@@ -759,6 +1072,11 @@ namespace F9SDMS.Migrations
             modelBuilder.Entity("F9SDMS.Data.ProjectSubcategory", b =>
                 {
                     b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("F9SDMS.Data.ProjectTask", b =>
+                {
+                    b.Navigation("Assignees");
                 });
 #pragma warning restore 612, 618
         }

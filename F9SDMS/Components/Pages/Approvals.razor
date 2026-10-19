@@ -1,0 +1,873 @@
+﻿@page "/approvals"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin,Manager")]
+@implements IDisposable
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAppClock Clock
+@inject ILogger<Approvals> Logger
+
+<PageTitle>Approvals</PageTitle>
+
+<AppShell Active="approvals" Title="Approvals" PendingCount="pendingTotal"
+          Subtitle="@(view == "balances" ? $"Leave balances for {Clock.Now.Year}, earned monthly from each employee's start date." : "Overtime and leave requests from everyone. Any manager or admin can decide.")">
+    <HeaderActions>
+        <div class="rq-tabs" role="tablist" aria-label="View">
+            <button type="button" role="tab" aria-selected="@(view == "requests" ? "true" : "false")" class="rq-tab @(view == "requests" ? "active" : "")" @onclick="@(() => view = "requests")">Requests</button>
+            <button type="button" role="tab" aria-selected="@(view == "balances" ? "true" : "false")" class="rq-tab @(view == "balances" ? "active" : "")" @onclick="@(() => view = "balances")">Leave balances</button>
+        </div>
+    </HeaderActions>
+    <ChildContent>
+        @if (message is not null)
+        {
+            <div class="rq-message @(messageIsError ? "error" : "")" role="status">@message</div>
+        }
+
+        @if (view == "requests")
+        {
+            <section class="rq-card">
+                <div class="rq-card-toolbar">
+                    <div class="rq-tabs" role="tablist" aria-label="Status">
+                        @foreach (var status in new[] { RequestOptions.StatusPending, RequestOptions.StatusApproved, RequestOptions.StatusRejected, RequestOptions.StatusCancelled })
+                        {
+                            <button type="button" role="tab" aria-selected="@(statusFilter == status ? "true" : "false")" class="rq-tab @(statusFilter == status ? "active" : "")" @onclick="() => statusFilter = status">
+                                @status
+                                @if (status == RequestOptions.StatusPending && rows.Any(r => r.Status == status))
+                                {
+                                    <span class="rq-tab-count">@rows.Count(r => r.Status == status)</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                    <div class="rq-tabs" role="tablist" aria-label="Request type">
+                        @foreach (var type in new[] { "All types", "Overtime", "Leave" })
+                        {
+                            <button type="button" role="tab" aria-selected="@(typeFilter == type ? "true" : "false")" class="rq-tab @(typeFilter == type ? "active" : "")" @onclick="() => typeFilter = type">@type</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="rq-table-scroll">
+                    <table class="rq-table">
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th>Details and reason</th>
+                                <th>@(statusFilter == RequestOptions.StatusPending ? "" : "Decided by")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in FilteredRows)
+                            {
+                                <tr>
+                                    <td>
+                                        <span class="rq-person"><span class="rq-avatar">@row.Initials</span><span class="rq-strong">@row.Name</span></span>
+                                    </td>
+                                    <td><span class="rq-pill @(row.IsOvertime ? "overtime" : "leave")">@(row.IsOvertime ? "Overtime" : "Leave")</span></td>
+                                    <td class="rq-strong rq-nowrap">@row.DateText</td>
+                                    <td>
+                                        <div>@row.Details</div>
+                                        <div class="rq-reason">@row.Reason</div>
+                                        @if (!string.IsNullOrEmpty(row.Meta))
+                                        {
+                                            <div class="rq-meta @row.MetaCss">@row.Meta</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(row.Note))
+                                        {
+                                            <div class="rq-note @RequestOptions.StatusCss(row.Status)">Note: @row.Note</div>
+                                        }
+                                    </td>
+                                    <td class="rq-actions">
+                                        @if (row.Status == RequestOptions.StatusPending)
+                                        {
+                                            @if (row.EmployeeId == userId)
+                                            {
+                                                <span class="rq-muted">Your request · another manager or admin decides</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="rq-action-group">
+                                                    <button type="button" class="rq-reject-btn" @onclick="() => OpenReject(row)" disabled="@isSaving">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="15" height="15"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                                                        Reject
+                                                    </button>
+                                                    <button type="button" class="rq-approve-btn" @onclick="() => Approve(row)" disabled="@isSaving">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="20 6 9 17 4 12" /></svg>
+                                                        Approve
+                                                    </button>
+                                                </span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="rq-muted">@row.DecidedText</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (!loaded)
+                {
+                    <div class="rq-empty">Loading requests…</div>
+                }
+                else if (!FilteredRows.Any())
+                {
+                    <div class="rq-empty">@(statusFilter == RequestOptions.StatusPending ? "Nothing waiting for approval." : $"No {statusFilter.ToLower()} requests.")</div>
+                }
+            </section>
+
+            <section class="rq-card rq-off-card">
+                <h2 class="rq-card-title">Who's off this week</h2>
+                @if (offThisWeek.Count == 0)
+                {
+                    <div class="rq-muted">Nobody has leave this week.</div>
+                }
+                else
+                {
+                    <div class="rq-off-list">
+                        @foreach (var off in offThisWeek)
+                        {
+                            <span class="rq-off">@off.Text · <strong>@off.Name</strong> @off.Detail @if (off.Pending) {<span class="rq-off-pending">(pending)</span>}</span>
+                        }
+                    </div>
+                }
+            </section>
+        }
+        else
+        {
+            <div class="rq-balances-layout">
+                <section class="rq-card">
+                    <div class="rq-card-toolbar">
+                        <h2 class="rq-card-title">Balances as of @Clock.Now.ToString("MMM d, yyyy")</h2>
+                        <span class="rq-muted">@EarnedThroughText</span>
+                    </div>
+                    <div class="rq-table-scroll">
+                        <table class="rq-table">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Started</th>
+                                    <th>Vacation <span class="rq-th-sub">earned · used · pending</span></th>
+                                    <th>Sick <span class="rq-th-sub">earned · used · pending</span></th>
+                                    <th><span class="visually-hidden">Actions</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var emp in balanceRows)
+                                {
+                                    <tr>
+                                        <td><span class="rq-person"><span class="rq-avatar">@emp.Initials</span><span class="rq-strong">@emp.Name</span></span></td>
+                                        <td class="rq-muted rq-nowrap">@(emp.StartDate?.ToString("MMM d, yyyy") ?? "Not set")</td>
+                                        <td>
+                                            <strong class="rq-big vacation">@LeaveRules.Days(emp.Leave.Vacation.Available)</strong> available
+                                            @if (emp.Leave.Vacation.Carried > 0)
+                                            {
+                                                <span class="rq-muted"> (+@LeaveRules.Days(emp.Leave.Vacation.Carried) carried)</span>
+                                            }
+                                            <div class="rq-muted rq-small">@BalanceLine(emp.Leave.Vacation)</div>
+                                        </td>
+                                        <td>
+                                            <strong class="rq-big sick">@LeaveRules.Days(emp.Leave.Sick.Available)</strong> available
+                                            <div class="rq-muted rq-small">@BalanceLine(emp.Leave.Sick)</div>
+                                        </td>
+                                        <td class="rq-actions">
+                                            @if (isAdmin)
+                                            {
+                                                <button type="button" class="rq-link-btn" @onclick="() => OpenAdjust(emp)">Adjust</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (loaded && balanceRows.Count == 0)
+                    {
+                        <div class="rq-empty">No employees yet.</div>
+                    }
+                </section>
+
+                <section class="rq-card rq-policy">
+                    <h2 class="rq-card-title">Leave policy @(isAdmin ? "" : "(set by admins)")</h2>
+                    <div class="rq-field">
+                        <label for="polVacation">Vacation leave per year</label>
+                        <input id="polVacation" type="number" min="0" max="365" step="0.5" class="rq-input" @bind="polVacation" disabled="@(!isAdmin)" />
+                        <span class="rq-hint">@LeaveRules.Days(polVacation / 12.0) days earned each month</span>
+                    </div>
+                    <div class="rq-field">
+                        <label for="polSick">Sick leave per year</label>
+                        <input id="polSick" type="number" min="0" max="365" step="0.5" class="rq-input" @bind="polSick" disabled="@(!isAdmin)" />
+                        <span class="rq-hint">@LeaveRules.Days(polSick / 12.0) days earned each month</span>
+                    </div>
+                    <div class="rq-field">
+                        <label for="polNotice">Vacation notice (days ahead)</label>
+                        <input id="polNotice" type="number" min="0" max="60" class="rq-input" @bind="polNotice" disabled="@(!isAdmin)" />
+                        <span class="rq-hint">Sick and Emergency leave can be filed after</span>
+                    </div>
+                    <div class="rq-field">
+                        <label for="polCarry">Vacation days carried to next year</label>
+                        <input id="polCarry" type="number" min="0" max="365" step="0.5" class="rq-input" @bind="polCarry" disabled="@(!isAdmin)" />
+                        <span class="rq-hint">Set to match Company policy (0 = none)</span>
+                    </div>
+                    @if (isAdmin)
+                    {
+                        <button type="button" class="rq-btn rq-btn-leave rq-btn-block" @onclick="SavePolicy" disabled="@isSaving">Save policy</button>
+                    }
+                </section>
+            </div>
+        }
+
+        @* ---------- Reject with a note ---------- *@
+        @if (rejecting is not null)
+        {
+            <div class="rq-overlay">
+                <div class="rq-modal" role="dialog" aria-labelledby="rejectTitle">
+                    <div class="rq-modal-header reject">
+                        <h2 id="rejectTitle">Reject request</h2>
+                        <button type="button" class="rq-close" aria-label="Close" @onclick="() => rejecting = null">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+                    <div class="rq-modal-body">
+                        <div class="rq-summary-card">
+                            <span class="rq-avatar">@rejecting.Initials</span>
+                            <div class="rq-grow">
+                                <div class="rq-strong">@rejecting.Name · @(rejecting.IsOvertime ? "Overtime" : "Leave") · @rejecting.DateText</div>
+                                <div class="rq-muted rq-small">@rejecting.Details · "@rejecting.Reason"</div>
+                            </div>
+                        </div>
+                        @if (rejecting.Clocked is TimeSpan clocked)
+                        {
+                            <div class="rq-stats">
+                                <div class="rq-stat"><span>Clocked</span><strong>@OvertimeRules.Format(clocked)</strong></div>
+                                <div class="rq-stat"><span>Overtime clocked</span><strong>@OvertimeRules.Format(rejecting.OvertimeClocked)</strong></div>
+                                <div class="rq-stat"><span>Asked for</span><strong class="overtime">@OvertimeRules.Format(rejecting.Minutes)</strong></div>
+                            </div>
+                        }
+                        <div class="rq-field">
+                            <label for="rejectNote">Note to @rejecting.FirstName <span class="rq-req">*</span></label>
+                            <textarea id="rejectNote" class="rq-input" rows="3" maxlength="1000" @bind="rejectNote" placeholder="Tell them why"></textarea>
+                        </div>
+                        @if (formError is not null)
+                        {
+                            <div class="rq-error">@formError</div>
+                        }
+                    </div>
+                    <div class="rq-modal-footer">
+                        <button type="button" class="rq-btn-cancel" @onclick="() => rejecting = null">Back</button>
+                        <button type="button" class="rq-btn rq-btn-reject" @onclick="ConfirmReject" disabled="@isSaving">Reject request</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ---------- Adjust a balance / start date (admins) ---------- *@
+        @if (adjusting is not null)
+        {
+            <div class="rq-overlay">
+                <div class="rq-modal" role="dialog" aria-labelledby="adjustTitle">
+                    <div class="rq-modal-header leave">
+                        <h2 id="adjustTitle">@adjusting.Name · leave</h2>
+                        <button type="button" class="rq-close" aria-label="Close" @onclick="() => adjusting = null">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+                    <div class="rq-modal-body">
+                        <div class="rq-field">
+                            <label for="adjStart">Start date</label>
+                            <input id="adjStart" type="date" class="rq-input" @bind="adjStartDate" />
+                            <span class="rq-hint">Leave is earned at the end of each full month from this date. Empty = from January 1.</span>
+                        </div>
+
+                        <div class="rq-divider"></div>
+
+                        <div class="rq-label">Adjust the @Clock.Now.Year balance <span class="rq-optional">(optional)</span></div>
+                        <div class="rq-row">
+                            <div class="rq-field grow">
+                                <label for="adjType">Leave type</label>
+                                <select id="adjType" class="rq-input" @bind="adjType">
+                                    <option value="@RequestOptions.LeaveVacation">Vacation</option>
+                                    <option value="@RequestOptions.LeaveSick">Sick</option>
+                                </select>
+                            </div>
+                            <div class="rq-field grow">
+                                <label for="adjDays">Days (+ adds, − removes)</label>
+                                <input id="adjDays" type="number" step="0.5" class="rq-input" @bind="adjDays" />
+                            </div>
+                        </div>
+                        <div class="rq-field">
+                            <label for="adjReason">Reason</label>
+                            <input id="adjReason" type="text" maxlength="500" class="rq-input" @bind="adjReason" placeholder="e.g. 2 vacation days used in March, before the system" />
+                        </div>
+
+                        @if (adjHistory.Count > 0)
+                        {
+                            <div class="rq-history">
+                                <div class="rq-label">Earlier adjustments</div>
+                                @foreach (var a in adjHistory)
+                                {
+                                    <div class="rq-history-row"><span>@a.CreatedAt.ToString("MMM d, yyyy")</span><strong>@(a.Days > 0 ? "+" : "")@LeaveRules.Days(a.Days) @a.LeaveType.ToLower()</strong><span class="rq-muted">@a.Reason</span></div>
+                                }
+                            </div>
+                        }
+
+                        @if (formError is not null)
+                        {
+                            <div class="rq-error">@formError</div>
+                        }
+                    </div>
+                    <div class="rq-modal-footer">
+                        <button type="button" class="rq-btn-cancel" @onclick="() => adjusting = null">Cancel</button>
+                        <button type="button" class="rq-btn rq-btn-leave" @onclick="SaveAdjust" disabled="@isSaving">Save</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private sealed class Row
+    {
+        public int Id { get; init; }
+        public bool IsOvertime { get; init; }
+        public string EmployeeId { get; init; } = "";
+        public string Name { get; init; } = "";
+        public string FirstName { get; init; } = "";
+        public string Initials { get; init; } = "";
+        public string DateText { get; init; } = "";
+        public DateTime SortDate { get; init; }
+        public DateTime CreatedAt { get; init; }
+        public string Details { get; init; } = "";
+        public string Reason { get; init; } = "";
+        public string Status { get; init; } = "";
+        public string? Note { get; init; }
+        public string DecidedText { get; init; } = "";
+        public string? Meta { get; set; }
+        public string MetaCss { get; set; } = "";
+        public TimeSpan? Clocked { get; set; }
+        public TimeSpan OvertimeClocked { get; set; }
+        public int Minutes { get; init; }
+    }
+
+    private sealed record Person(string Id, string Name, string FirstName, string Initials, DateTime? StartDate);
+    private sealed record BalanceRow(string Id, string Name, string Initials, DateTime? StartDate, EmployeeLeave Leave);
+    private sealed record OffDay(string Text, string Name, string Detail, bool Pending);
+
+    private string? userId;
+    private bool isAdmin;
+    private bool loaded;
+    private bool isSaving;
+    private string view = "requests";
+    private string statusFilter = RequestOptions.StatusPending;
+    private string typeFilter = "All types";
+    private int pendingTotal;
+
+    private List<Row> rows = new();
+    private List<OffDay> offThisWeek = new();
+    private List<BalanceRow> balanceRows = new();
+    private Dictionary<string, Person> people = new();
+
+    private double polVacation;
+    private double polSick;
+    private int polNotice;
+    private double polCarry;
+
+    private Row? rejecting;
+    private string rejectNote = "";
+
+    private BalanceRow? adjusting;
+    private DateTime? adjStartDate;
+    private string adjType = RequestOptions.LeaveVacation;
+    private double adjDays;
+    private string adjReason = "";
+    private List<LeaveAdjustment> adjHistory = new();
+
+    private string? message;
+    private bool messageIsError;
+    private CancellationTokenSource? messageCts;
+    private string? formError;
+
+    private IEnumerable<Row> FilteredRows
+    {
+        get
+        {
+            var list = rows.Where(r => r.Status == statusFilter);
+            if (typeFilter == "Overtime") list = list.Where(r => r.IsOvertime);
+            if (typeFilter == "Leave") list = list.Where(r => !r.IsOvertime);
+            // Pending: soonest first. Decided: most recent first.
+            return statusFilter == RequestOptions.StatusPending
+                ? list.OrderBy(r => r.SortDate).ThenBy(r => r.CreatedAt)
+                : list.OrderByDescending(r => r.CreatedAt);
+        }
+    }
+
+    private string EarnedThroughText
+    {
+        get
+        {
+            var now = Clock.Now;
+            return now.Month == 1
+                ? "Nothing earned yet this year"
+                : $"Earned through {new DateTime(now.Year, now.Month, 1).AddDays(-1):MMM d}";
+        }
+    }
+
+    private static string BalanceLine(LeaveBalance b)
+    {
+        var earned = LeaveRules.Days(b.Earned);
+        if (b.Adjusted != 0) earned += $" {(b.Adjusted > 0 ? "+" : "−")}{LeaveRules.Days(Math.Abs(b.Adjusted))}";
+        return $"{earned} · {LeaveRules.Days(b.Used)} · {LeaveRules.Days(b.Pending)}";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = UserManager.GetUserId(authState.User);
+        isAdmin = authState.User.IsInRole("Admin");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var now = Clock.Now;
+
+        var admins = (await UserManager.GetUsersInRoleAsync("Admin")).Select(u => u.Id).ToHashSet();
+        var users = await db.Users.AsNoTracking().ToListAsync();
+        people = users.ToDictionary(u => u.Id, u =>
+        {
+            var first = string.IsNullOrWhiteSpace(u.FirstName) ? (u.Email ?? "?") : u.FirstName;
+            var name = $"{first} {u.LastName}".Trim();
+            var initials = (first[..1] + (string.IsNullOrWhiteSpace(u.LastName) ? "" : u.LastName[..1])).ToUpper();
+            return new Person(u.Id, name, first, initials, u.StartDate);
+        });
+
+        Person PersonOf(string id) => people.TryGetValue(id, out var p) ? p : new Person(id, "Former employee", "them", "?", null);
+        string Decided(string? by, DateTime? at) =>
+            by is null || at is null ? "—" : $"{(people.TryGetValue(by, out var p) ? p.FirstName : "Someone")} · {at.Value:MMM d}";
+
+        // Requests from the last year, plus anything still pending.
+        var since = now.Date.AddYears(-1);
+        var overtime = await db.OvertimeRequests.AsNoTracking()
+            .Where(o => o.Status == RequestOptions.StatusPending || o.CreatedAt >= since)
+            .Include(o => o.Project)
+            .ToListAsync();
+        var leave = await db.LeaveRequests.AsNoTracking()
+            .Where(l => l.Status == RequestOptions.StatusPending || l.CreatedAt >= since)
+            .ToListAsync();
+
+        var list = new List<Row>();
+        foreach (var o in overtime)
+        {
+            var p = PersonOf(o.EmployeeId);
+            var row = new Row
+            {
+                Id = o.Id, IsOvertime = true, EmployeeId = o.EmployeeId, Name = p.Name, FirstName = p.FirstName, Initials = p.Initials,
+                DateText = o.Date.ToString("ddd, MMM d"), SortDate = o.Date, CreatedAt = o.CreatedAt,
+                Details = RequestText.OvertimeDetails(o),
+                Reason = (o.Project is null ? "" : $"{o.Project.Code} · {o.Project.Sample} — ") + o.Reason,
+                Status = o.Status, Note = o.DecisionNote, DecidedText = Decided(o.DecidedById, o.DecidedAt), Minutes = o.Minutes
+            };
+            if (o.Status == RequestOptions.StatusPending)
+            {
+                if (o.Date <= now.Date)
+                {
+                    var clocked = await OvertimeRules.GetClockedAsync(db, o.EmployeeId, o.Date, now);
+                    var overtimeClocked = await OvertimeRules.GetOvertimeClockedAsync(db, o.EmployeeId, o.Date, now);
+                    row.Clocked = clocked;
+                    row.OvertimeClocked = overtimeClocked;
+                    row.Meta = $"Overtime clocked {OvertimeRules.Format(overtimeClocked)} · {OvertimeRules.Format(clocked)} in total that day";
+                    row.MetaCss = "warn";
+                }
+                else
+                {
+                    row.Meta = $"Filed {o.CreatedAt:MMM d, h:mm tt}";
+                }
+            }
+            list.Add(row);
+        }
+
+        // Balances for everyone with pending leave, so approvers can see what's left.
+        var pendingLeaveIds = leave.Where(l => l.Status == RequestOptions.StatusPending).Select(l => l.EmployeeId).ToHashSet();
+        var policy = await LeaveRules.GetPolicyAsync(db);
+        var employees = users.Where(u => !admins.Contains(u.Id) || pendingLeaveIds.Contains(u.Id)).ToList();
+        var balances = await LeaveRules.GetBalancesAsync(db, employees, now.Year, now, policy);
+
+        foreach (var l in leave)
+        {
+            var p = PersonOf(l.EmployeeId);
+            var row = new Row
+            {
+                Id = l.Id, IsOvertime = false, EmployeeId = l.EmployeeId, Name = p.Name, FirstName = p.FirstName, Initials = p.Initials,
+                DateText = RequestText.LeaveDateText(l), SortDate = l.StartDate, CreatedAt = l.CreatedAt,
+                Details = RequestText.LeaveDetails(l), Reason = l.Reason,
+                Status = l.Status, Note = l.DecisionNote, DecidedText = Decided(l.DecidedById, l.DecidedAt)
+            };
+            if (l.Status == RequestOptions.StatusPending)
+            {
+                if (RequestOptions.UsesCredits(l.LeaveType) && l.StartDate.Year == now.Year && balances.TryGetValue(l.EmployeeId, out var b))
+                {
+                    // The pending request is already counted, so "before" adds it back.
+                    var after = b.For(l.LeaveType).Available;
+                    row.Meta = $"{l.LeaveType} available {LeaveRules.Days(after + l.CreditDays)} days → {LeaveRules.Days(after)} after";
+                    row.MetaCss = "balance";
+                }
+                else
+                {
+                    row.Meta = $"Filed {l.CreatedAt:MMM d, h:mm tt}";
+                }
+            }
+            list.Add(row);
+        }
+        rows = list;
+        pendingTotal = rows.Count(r => r.Status == RequestOptions.StatusPending && r.EmployeeId != userId);
+
+        // Who's off this week (Monday to Sunday), approved or pending.
+        var monday = now.Date.AddDays(-(((int)now.DayOfWeek + 6) % 7));
+        var sunday = monday.AddDays(6);
+        offThisWeek = leave
+            .Where(l => (l.Status == RequestOptions.StatusApproved || l.Status == RequestOptions.StatusPending) && l.StartDate <= sunday && l.EndDate >= monday)
+            .OrderBy(l => l.StartDate)
+            .Select(l => new OffDay(
+                RequestText.LeaveDateText(l),
+                PersonOf(l.EmployeeId).FirstName,
+                l.IsHalfDay ? $"{l.LeaveType} {l.HalfDayPart}" : l.LeaveType,
+                l.Status == RequestOptions.StatusPending))
+            .ToList();
+
+        // Leave balances tab: everyone except admins.
+        balanceRows = users
+            .Where(u => !admins.Contains(u.Id) && balances.ContainsKey(u.Id))
+            .Select(u => PersonOf(u.Id))
+            .OrderBy(p => p.Name)
+            .Select(p => new BalanceRow(p.Id, p.Name, p.Initials, p.StartDate, balances[p.Id]))
+            .ToList();
+
+        polVacation = policy.VacationDaysPerYear;
+        polSick = policy.SickDaysPerYear;
+        polNotice = policy.VacationNoticeDays;
+        polCarry = policy.CarryOverMaxDays;
+
+        loaded = true;
+    }
+
+    private async Task Approve(Row row)
+    {
+        if (isSaving || row.EmployeeId == userId) return;
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var now = Clock.Now;
+            string result;
+
+            if (row.IsOvertime)
+            {
+                var o = await db.OvertimeRequests.FirstOrDefaultAsync(x => x.Id == row.Id);
+                if (o is null || o.Status != RequestOptions.StatusPending)
+                {
+                    ShowMessage("That request was already decided or cancelled.", true);
+                    await LoadAsync();
+                    return;
+                }
+                o.Status = RequestOptions.StatusApproved;
+                o.DecidedById = userId;
+                o.DecidedAt = now;
+                NotifyDecision(db, o.EmployeeId, true, $"Overtime on {o.Date:ddd, MMM d}", RequestText.OvertimeDetails(o), null, now);
+                await db.SaveChangesAsync();
+                result = $"Approved {row.FirstName}'s overtime on {o.Date:MMM d} ({OvertimeRules.Format(o.Minutes)}).";
+            }
+            else
+            {
+                var l = await db.LeaveRequests.FirstOrDefaultAsync(x => x.Id == row.Id);
+                if (l is null || l.Status != RequestOptions.StatusPending)
+                {
+                    ShowMessage("That request was already decided or cancelled.", true);
+                    await LoadAsync();
+                    return;
+                }
+
+                // The balance may have changed since it was filed (other leave approved, adjustments):
+                // anything no longer covered becomes unpaid.
+                if (l.CreditDays > 0)
+                {
+                    var employee = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == l.EmployeeId);
+                    if (employee is not null)
+                    {
+                        var asOf = l.StartDate.Year == now.Year ? now : new DateTime(l.StartDate.Year, 1, 1);
+                        var balances = await LeaveRules.GetBalancesAsync(db, new[] { employee }, l.StartDate.Year, asOf);
+                        var availableWithThis = balances[employee.Id].For(l.LeaveType).Available + l.CreditDays;
+                        var split = LeaveRules.Split(l.LeaveType, l.TotalDays, availableWithThis);
+                        l.CreditDays = split.Credit;
+                        l.UnpaidDays = split.Unpaid;
+                    }
+                }
+
+                l.Status = RequestOptions.StatusApproved;
+                l.DecidedById = userId;
+                l.DecidedAt = now;
+                NotifyDecision(db, l.EmployeeId, true, $"{l.LeaveType} leave · {RequestText.LeaveDateText(l)}", RequestText.LeaveDetails(l), null, now);
+                await db.SaveChangesAsync();
+                result = $"Approved {row.FirstName}'s {l.LeaveType.ToLower()} leave ({RequestText.LeaveDateText(l)})"
+                    + (l.LeaveType != RequestOptions.LeaveUnpaid && l.UnpaidDays > 0 ? $", {LeaveRules.Days(l.UnpaidDays)} unpaid." : ".");
+            }
+
+            await LoadAsync();
+            ShowMessage(result);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Approving a request failed.");
+            ShowMessage("Something went wrong while approving. Please try again.", true);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    /// <summary>Tells the employee in their bell that their request was approved or rejected.</summary>
+    private void NotifyDecision(ApplicationDbContext db, string employeeId, bool approved, string title, string details, string? note, DateTime now)
+    {
+        var by = userId is not null && people.TryGetValue(userId, out var me) ? me.FirstName : "A manager";
+        var body = $"{details} · {(approved ? "Approved" : "Rejected")} by {by}";
+        if (!approved && !string.IsNullOrWhiteSpace(note))
+        {
+            body += $" · \"{note}\"";
+        }
+
+        db.Notifications.Add(new Notification
+        {
+            UserId = employeeId,
+            Kind = approved ? Notification.KindRequestApproved : Notification.KindRequestRejected,
+            Title = title,
+            Body = body.Length > 500 ? body[..497] + "…" : body,
+            Link = "/requests",
+            CreatedAt = now
+        });
+    }
+
+    private void OpenReject(Row row)
+    {
+        rejecting = row;
+        rejectNote = "";
+        formError = null;
+    }
+
+    private async Task ConfirmReject()
+    {
+        if (rejecting is null || isSaving) return;
+        if (string.IsNullOrWhiteSpace(rejectNote))
+        {
+            formError = "Please add a note so they know why.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var now = Clock.Now;
+            var ok = false;
+            if (rejecting.IsOvertime)
+            {
+                var o = await db.OvertimeRequests.FirstOrDefaultAsync(x => x.Id == rejecting.Id);
+                if (o is not null && o.Status == RequestOptions.StatusPending && o.EmployeeId != userId)
+                {
+                    o.Status = RequestOptions.StatusRejected;
+                    o.DecisionNote = rejectNote.Trim();
+                    o.DecidedById = userId;
+                    o.DecidedAt = now;
+                    NotifyDecision(db, o.EmployeeId, false, $"Overtime on {o.Date:ddd, MMM d}", RequestText.OvertimeDetails(o), o.DecisionNote, now);
+                    ok = true;
+                }
+            }
+            else
+            {
+                var l = await db.LeaveRequests.FirstOrDefaultAsync(x => x.Id == rejecting.Id);
+                if (l is not null && l.Status == RequestOptions.StatusPending && l.EmployeeId != userId)
+                {
+                    l.Status = RequestOptions.StatusRejected;
+                    l.DecisionNote = rejectNote.Trim();
+                    l.DecidedById = userId;
+                    l.DecidedAt = now;
+                    NotifyDecision(db, l.EmployeeId, false, $"{l.LeaveType} leave · {RequestText.LeaveDateText(l)}", RequestText.LeaveDetails(l), l.DecisionNote, now);
+                    ok = true;
+                }
+            }
+
+            if (ok) await db.SaveChangesAsync();
+            var name = rejecting.FirstName;
+            rejecting = null;
+            await LoadAsync();
+            ShowMessage(ok ? $"Rejected {name}'s request. They'll see your note." : "That request was already decided or cancelled.", !ok);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Rejecting a request failed.");
+            formError = "Something went wrong while rejecting. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task OpenAdjust(BalanceRow emp)
+    {
+        if (!isAdmin) return;
+        adjusting = emp;
+        adjStartDate = emp.StartDate;
+        adjType = RequestOptions.LeaveVacation;
+        adjDays = 0;
+        adjReason = "";
+        formError = null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        adjHistory = await db.LeaveAdjustments.AsNoTracking()
+            .Where(a => a.EmployeeId == emp.Id)
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(5)
+            .ToListAsync();
+    }
+
+    private async Task SaveAdjust()
+    {
+        if (adjusting is null || !isAdmin || isSaving) return;
+        formError = null;
+
+        if (adjDays != 0 && string.IsNullOrWhiteSpace(adjReason))
+        {
+            formError = "Please add a reason for the adjustment.";
+            return;
+        }
+        if (Math.Abs(adjDays) > 365)
+        {
+            formError = "That adjustment is too large.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == adjusting.Id);
+            if (user is null)
+            {
+                formError = "That employee no longer exists.";
+                return;
+            }
+
+            user.StartDate = adjStartDate?.Date;
+            if (adjDays != 0)
+            {
+                db.LeaveAdjustments.Add(new LeaveAdjustment
+                {
+                    EmployeeId = user.Id,
+                    Year = Clock.Now.Year,
+                    LeaveType = adjType,
+                    Days = Math.Round(adjDays, 2),
+                    Reason = adjReason.Trim(),
+                    CreatedById = userId,
+                    CreatedAt = Clock.Now
+                });
+            }
+            await db.SaveChangesAsync();
+
+            var name = adjusting.Name;
+            adjusting = null;
+            await LoadAsync();
+            ShowMessage($"Saved {name}'s leave details.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving a leave adjustment failed.");
+            formError = "Something went wrong while saving. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task SavePolicy()
+    {
+        if (!isAdmin || isSaving) return;
+        if (polVacation < 0 || polSick < 0 || polNotice < 0 || polCarry < 0)
+        {
+            ShowMessage("Policy values can't be negative.", true);
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var policy = await db.LeavePolicies.FirstOrDefaultAsync(p => p.Id == 1);
+            if (policy is null)
+            {
+                policy = new LeavePolicy { Id = 1 };
+                db.LeavePolicies.Add(policy);
+            }
+            policy.VacationDaysPerYear = Math.Round(polVacation, 2);
+            policy.SickDaysPerYear = Math.Round(polSick, 2);
+            policy.VacationNoticeDays = polNotice;
+            policy.CarryOverMaxDays = Math.Round(polCarry, 2);
+            await db.SaveChangesAsync();
+
+            await LoadAsync();
+            ShowMessage("Leave policy saved. Balances now use the new values.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving the leave policy failed.");
+            ShowMessage("Something went wrong while saving the policy.", true);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowMessage(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+        messageCts?.Cancel();
+        messageCts = new CancellationTokenSource();
+        var token = messageCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(isError ? 10 : 6), token);
+                await InvokeAsync(() =>
+                {
+                    message = null;
+                    StateHasChanged();
+                });
+            }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        });
+    }
+
+    public void Dispose()
+    {
+        messageCts?.Cancel();
+        messageCts?.Dispose();
+    }
+}

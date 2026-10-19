@@ -21,12 +21,17 @@ namespace F9SDMS.Services
         /// </summary>
         public static readonly TimeSpan HeartbeatGracePeriod = TimeSpan.FromMinutes(15);
 
+        /// <summary>How long a regular session may run (null for overtime, which has no limit).</summary>
+        public static TimeSpan? GetLimit(AttendanceSession session) =>
+            session.IsOvertime ? null : TimeSpan.FromMinutes(session.LimitMinutes ?? (int)MaxSessionLength.TotalMinutes);
+
         /// <summary>
         /// Returns the time an open session should be clocked out at, or null if it is still active.
         /// </summary>
         public static DateTime? GetAutoClockOutTime(AttendanceSession session, DateTime now)
         {
-            var limit = session.ClockInTime + MaxSessionLength;
+            // Overtime has no limit of its own; it only ends when the dashboard isn't seen.
+            var limit = GetLimit(session) is TimeSpan length ? session.ClockInTime + length : DateTime.MaxValue;
 
             if (session.LastSeenTime is DateTime lastSeen)
             {
@@ -79,10 +84,21 @@ namespace F9SDMS.Services
 
             if (sessionToResume is null)
             {
+                // Save the sessions closed above first so they count towards today's 8 hours.
+                await db.SaveChangesAsync();
+
+                // What's left of today's regular 8 hours. Once it's used up, logging in again
+                // starts overtime.
+                var regularToday = await GetRegularTimeAsync(db, employeeId, now.Date, now);
+                var remaining = MaxSessionLength - regularToday;
+                var isOvertime = remaining < TimeSpan.FromMinutes(1);
+
                 sessionToResume = new AttendanceSession
                 {
                     EmployeeId = employeeId,
-                    ClockInTime = now
+                    ClockInTime = now,
+                    IsOvertime = isOvertime,
+                    LimitMinutes = isOvertime ? null : (int)Math.Ceiling(remaining.TotalMinutes)
                 };
                 db.AttendanceSessions.Add(sessionToResume);
             }
@@ -99,6 +115,25 @@ namespace F9SDMS.Services
             }
 
             return sessionToResume;
+        }
+
+        /// <summary>Regular (not overtime) time clocked in sessions that started on <paramref name="date"/>.</summary>
+        public static async Task<TimeSpan> GetRegularTimeAsync(ApplicationDbContext db, string employeeId, DateTime date, DateTime now)
+        {
+            var day = date.Date;
+            var next = day.AddDays(1);
+            var sessions = await db.AttendanceSessions.AsNoTracking()
+                .Where(s => s.EmployeeId == employeeId && !s.IsOvertime && s.ClockInTime >= day && s.ClockInTime < next)
+                .Select(s => new { s.ClockInTime, s.ClockOutTime })
+                .ToListAsync();
+
+            var total = TimeSpan.Zero;
+            foreach (var s in sessions)
+            {
+                var end = s.ClockOutTime ?? now;
+                if (end > s.ClockInTime) total += end - s.ClockInTime;
+            }
+            return total;
         }
     }
 }

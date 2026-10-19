@@ -1,0 +1,191 @@
+﻿@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IAppClock Clock
+
+@* The bell in the page header: task deadline reminders with an unread count. *@
+
+<div class="notif-wrapper">
+    <button type="button" class="notif-bell @(open ? "open" : "")" aria-label="Notifications, @unread unread" aria-expanded="@(open ? "true" : "false")" @onclick="Toggle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+        @if (unread > 0)
+        {
+            <span class="notif-count">@(unread > 99 ? "99+" : unread.ToString())</span>
+        }
+    </button>
+
+    @if (open)
+    {
+        <div class="notif-backdrop" @onclick="() => open = false"></div>
+        <div class="notif-panel" role="dialog" aria-label="Notifications">
+            <div class="notif-panel-head">
+                <span>Notifications</span>
+                @if (unread > 0)
+                {
+                    <button type="button" class="notif-mark-all" @onclick="MarkAllRead">Mark all as read</button>
+                }
+            </div>
+            @if (items.Count == 0)
+            {
+                <div class="notif-empty">No notifications yet. Task deadline reminders and decisions on your overtime and leave requests show up here.</div>
+            }
+            else
+            {
+                <div class="notif-list">
+                    @foreach (var n in items)
+                    {
+                        <button type="button" class="notif-item @(n.ReadAt is null ? "unread" : "")" @onclick="() => OpenItem(n)">
+                            <span class="notif-dot" aria-hidden="true"></span>
+                            <span class="notif-text">
+                                <span class="notif-top">
+                                    <span class="notif-kind @KindCss(n.Kind)">@KindLabel(n.Kind)</span>
+                                    <span class="notif-when">@When(n.CreatedAt)</span>
+                                </span>
+                                <span class="notif-title">@n.Title</span>
+                                @if (!string.IsNullOrEmpty(n.Body))
+                                {
+                                    <span class="notif-body">@n.Body</span>
+                                }
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
+
+    private string? userId;
+    private int unread;
+    private bool open;
+    private List<Notification> items = new();
+    private System.Threading.Timer? timer;
+    private bool disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = UserManager.GetUserId(authState.User);
+        await LoadCountAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && userId is not null)
+        {
+            timer = new System.Threading.Timer(_ => _ = InvokeAsync(RefreshAsync), null, RefreshInterval, RefreshInterval);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (disposed) return;
+        try
+        {
+            await LoadCountAsync();
+            if (open) await LoadItemsAsync();
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+            // The page may be closing; try again on the next tick.
+        }
+    }
+
+    private async Task LoadCountAsync()
+    {
+        if (userId is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        unread = await TaskReminders.CountUnreadAsync(db, userId);
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        if (userId is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        items = await db.Notifications.AsNoTracking()
+            .Where(n => n.UserId == userId)
+            .OrderBy(n => n.ReadAt != null)
+            .ThenByDescending(n => n.CreatedAt)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task Toggle()
+    {
+        open = !open;
+        if (open) await LoadItemsAsync();
+    }
+
+    private async Task OpenItem(Notification n)
+    {
+        if (userId is null) return;
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            var stored = await db.Notifications.FirstOrDefaultAsync(x => x.Id == n.Id && x.UserId == userId);
+            if (stored is not null && stored.ReadAt is null)
+            {
+                stored.ReadAt = Clock.Now;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        open = false;
+        await LoadCountAsync();
+        if (!string.IsNullOrEmpty(n.Link))
+        {
+            Navigation.NavigateTo(n.Link);
+        }
+    }
+
+    private async Task MarkAllRead()
+    {
+        if (userId is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var now = Clock.Now;
+        await db.Notifications
+            .Where(n => n.UserId == userId && n.ReadAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, (DateTime?)now));
+        unread = 0;
+        await LoadItemsAsync();
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        Notification.KindOverdue => "Overdue",
+        Notification.KindRequestApproved => "Request approved",
+        Notification.KindRequestRejected => "Request rejected",
+        _ => "Deadline coming up"
+    };
+
+    private static string KindCss(string kind) => kind switch
+    {
+        Notification.KindOverdue => "overdue",
+        Notification.KindRequestApproved => "approved",
+        Notification.KindRequestRejected => "rejected",
+        _ => "soon"
+    };
+
+    private string When(DateTime created)
+    {
+        var today = Clock.Now.Date;
+        if (created.Date == today) return created.ToString("h:mm tt");
+        if (created.Date == today.AddDays(-1)) return "Yesterday";
+        return created.ToString("MMM d");
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        timer?.Dispose();
+    }
+}

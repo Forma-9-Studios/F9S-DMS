@@ -20,5 +20,11 @@ namespace F9SDMS.Data
 
         /// <summary>The task of <see cref="CurrentSubcategoryId"/> being worked on (or checked), if any.</summary>
         public int? CurrentTaskId { get; set; }
+
+        /// <summary>
+        /// First day of work. Vacation and sick leave are earned from this date
+        /// (from January 1 when it isn't set).
+        /// </summary>
+        public DateTime? StartDate { get; set; }
     }
 }

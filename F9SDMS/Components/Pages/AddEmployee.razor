@@ -58,6 +58,11 @@
             </div>
 
             <div class="form-field">
+                <label>Start date <span class="optional-label">(for leave credits)</span></label>
+                <InputDate @bind-Value="Input.StartDate" class="form-input" />
+            </div>
+
+            <div class="form-field">
                 <label>Role</label>
                 <InputSelect @bind-Value="Input.Role" class="form-input select-input">
                     <option value="Employee">Employee</option>
@@ -115,7 +120,8 @@
                 Email = Input.Email,
                 EmailConfirmed = true,
                 FirstName = Input.FirstName,
-                LastName = Input.LastName
+                LastName = Input.LastName,
+                StartDate = Input.StartDate?.Date
             };
 
             var result = await UserManager.CreateAsync(newUser, Input.Password);
@@ -164,5 +170,8 @@
         public string Password { get; set; } = "";
 
         public string Role { get; set; } = "Employee";
+
+        /// <summary>First day of work; vacation and sick leave are earned from here.</summary>
+        public DateTime? StartDate { get; set; }
     }
 }

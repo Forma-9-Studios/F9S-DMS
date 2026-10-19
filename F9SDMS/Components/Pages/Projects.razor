@@ -206,7 +206,7 @@
                         <div class="sub-section">
                             <div class="sub-header">
                                 <span class="sub-title">Sub-categories and tasks</span>
-                                <span class="hint">Optional. Engineers pick a task as their status, and each task is checked on its own. A sub-category needs at least one task.</span>
+                                <span class="hint">Optional. Engineers pick a task as their status, and each task is checked on its own. A sub-category needs at least one task. Each task needs a deadline; its assignees and the project manager are reminded the day before.</span>
                             </div>
                             @foreach (var sub in editor.Subcategories.Where(x => !x.Removed))
                             {
@@ -250,6 +250,49 @@
                                                     else
                                                     {
                                                         <button type="button" class="sub-btn" @onclick="() => RemoveTask(sub, task)">Remove</button>
+                                                    }
+                                                    @if (!task.IsArchived)
+                                                    {
+                                                        <div class="task-meta">
+                                                            <label class="task-meta-label">
+                                                                Deadline <span class="req">*</span>
+                                                                <input type="date" class="task-date-input @(TaskDeadlineError(task) is null ? "" : "invalid")" @bind="task.Deadline" aria-label="Deadline for @task.Name" />
+                                                            </label>
+                                                            <div class="task-assignees">
+                                                                <span class="task-meta-label">Assigned to</span>
+                                                                @foreach (var aid in task.AssigneeIds.ToList())
+                                                                {
+                                                                    if (!peopleById.TryGetValue(aid, out var ap)) continue;
+                                                                    <span class="task-chip">
+                                                                        <span class="chip-avatar">@ap.Initials</span>@ap.Name.Split(' ')[0]
+                                                                        <button type="button" class="chip-remove" aria-label="Remove @ap.Name from @task.Name" @onclick="() => task.AssigneeIds.Remove(aid)">
+                                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="12" height="12"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                                                                        </button>
+                                                                    </span>
+                                                                }
+                                                                @if (editor.AssigneeIds.Any(id => !task.AssigneeIds.Contains(id)))
+                                                                {
+                                                                    <select class="task-assign-select" aria-label="Assign someone to @task.Name" @key="task.PickerKey" @onchange="e => AssignToTask(task, e)">
+                                                                        <option value="">+ Add</option>
+                                                                        @foreach (var eid in editor.AssigneeIds.Where(id => !task.AssigneeIds.Contains(id)))
+                                                                        {
+                                                                            if (peopleById.TryGetValue(eid, out var ep))
+                                                                            {
+                                                                                <option value="@eid">@ep.Name</option>
+                                                                            }
+                                                                        }
+                                                                    </select>
+                                                                }
+                                                                else if (editor.AssigneeIds.Count == 0)
+                                                                {
+                                                                    <span class="task-meta-hint">Add engineers to the project below first</span>
+                                                                }
+                                                            </div>
+                                                            @if (TaskDeadlineError(task) is string dlError)
+                                                            {
+                                                                <span class="task-meta-error">@dlError</span>
+                                                            }
+                                                        </div>
                                                     }
                                                 </div>
                                             }
@@ -485,6 +528,7 @@
                 .ToListAsync();
             var tasks = await db.ProjectTasks
                 .AsNoTracking()
+                .Include(t => t.Assignees)
                 .Where(t => t.ProjectId == p.Id)
                 .OrderBy(t => t.Id)
                 .ToListAsync();
@@ -509,6 +553,9 @@
                     IsArchived = t.IsArchived,
                     Status = t.Status,
                     HasChecks = checkedSubs.Any(c => c.TaskId == t.Id),
+                    Deadline = t.Deadline,
+                    OriginalDeadline = t.Deadline,
+                    AssigneeIds = t.Assignees.Select(a => a.EmployeeId).ToList(),
                     Hours = logged.Where(e => e.TaskId == t.Id)
                         .Aggregate(TimeSpan.Zero, (sum, e) => sum + ((e.EndTime ?? now) - e.StartTime))
                 }).ToList()
@@ -584,9 +631,32 @@
             return;
         }
 
-        sub.Tasks.Add(new TaskEdit { Name = name, Status = ProjectOptions.StatusInProgress });
+        // Starts at the project's due date; change it in the row.
+        sub.Tasks.Add(new TaskEdit { Name = name, Status = ProjectOptions.StatusInProgress, Deadline = editor?.DueDate?.Date });
         sub.NewTaskName = "";
         formError = null;
+    }
+
+    private static void AssignToTask(TaskEdit task, ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(id) && !task.AssigneeIds.Contains(id))
+        {
+            task.AssigneeIds.Add(id);
+        }
+        task.PickerKey = Guid.NewGuid().ToString("N"); // resets the picker to "+ Add"
+    }
+
+    /// <summary>What's wrong with a task's deadline, or null when it's fine.</summary>
+    private string? TaskDeadlineError(TaskEdit task)
+    {
+        if (task.Removed || task.IsArchived || task.Status == ProjectOptions.StatusApproved) return null;
+        if (task.Deadline is not DateTime deadline) return "Pick a deadline.";
+        if (editor?.DueDate is DateTime due && deadline.Date > due.Date)
+            return $"Can't be after the project's due date ({due:MMM d}).";
+        var changed = task.Id == 0 || task.OriginalDeadline?.Date != deadline.Date;
+        if (changed && deadline.Date < Clock.Now.Date) return "Can't be in the past.";
+        return null;
     }
 
     private void NewTaskKeyDown(KeyboardEventArgs e, SubcategoryEdit sub)
@@ -690,6 +760,17 @@
             formError = "Pick the project manager who does the final check.";
             return;
         }
+        foreach (var sub in keptSubs.Where(x => !x.IsArchived))
+        {
+            foreach (var task in sub.Tasks.Where(t => !t.Removed && !t.IsArchived))
+            {
+                if (TaskDeadlineError(task) is string error)
+                {
+                    formError = $"{sub.Name.Trim()} › {task.Name.Trim()}: {error}";
+                    return;
+                }
+            }
+        }
 
         isSaving = true;
         try
@@ -707,7 +788,7 @@
             {
                 var existing = await db.Projects
                     .Include(p => p.Assignments)
-                    .Include(p => p.Subcategories).ThenInclude(x => x.Tasks)
+                    .Include(p => p.Subcategories).ThenInclude(x => x.Tasks).ThenInclude(t => t.Assignees)
                     .FirstOrDefaultAsync(p => p.Id == editor.Id);
 
                 if (existing is null)
@@ -766,7 +847,9 @@
                         var newSub = new ProjectSubcategory { Name = name, CreatedAt = now };
                         foreach (var taskEdit in edit.Tasks.Where(t => !t.Removed && t.Name.Trim().Length > 0))
                         {
-                            newSub.Tasks.Add(new ProjectTask { Project = project, Name = taskEdit.Name.Trim(), CreatedAt = now });
+                            var newTask = new ProjectTask { Project = project, Name = taskEdit.Name.Trim(), CreatedAt = now };
+                            ApplyTaskEdit(newTask, taskEdit, selected);
+                            newSub.Tasks.Add(newTask);
                         }
                         project.Subcategories.Add(newSub);
                     }
@@ -807,7 +890,9 @@
                     {
                         if (!taskEdit.Removed && taskName.Length > 0)
                         {
-                            stored.Tasks.Add(new ProjectTask { ProjectId = project.Id, Name = taskName, CreatedAt = now });
+                            var newTask = new ProjectTask { ProjectId = project.Id, Name = taskName, CreatedAt = now };
+                            ApplyTaskEdit(newTask, taskEdit, selected);
+                            stored.Tasks.Add(newTask);
                         }
                         continue;
                     }
@@ -833,6 +918,7 @@
                     }
 
                     storedTask.Name = taskName;
+                    ApplyTaskEdit(storedTask, taskEdit, selected);
                     if (taskEdit.IsArchived && !storedTask.IsArchived)
                     {
                         endedTaskIds.Add(taskEdit.Id);
@@ -908,6 +994,16 @@
                 }
             }
 
+            // Deadline reminders follow the new deadlines and assignees right away.
+            try
+            {
+                await TaskReminders.SyncAsync(db, now);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Updating deadline reminders failed.");
+            }
+
             editor = null;
             await LoadAsync();
         }
@@ -919,6 +1015,22 @@
         finally
         {
             isSaving = false;
+        }
+    }
+
+    /// <summary>Copies a task's deadline and assignees from the editor (only engineers on the project can be assigned).</summary>
+    private static void ApplyTaskEdit(ProjectTask task, TaskEdit edit, List<string> engineers)
+    {
+        if (edit.Deadline is DateTime deadline)
+        {
+            task.Deadline = deadline.Date;
+        }
+
+        var wanted = edit.AssigneeIds.Where(engineers.Contains).Distinct().ToList();
+        task.Assignees.RemoveAll(a => !wanted.Contains(a.EmployeeId));
+        foreach (var id in wanted.Where(id => task.Assignees.All(a => a.EmployeeId != id)))
+        {
+            task.Assignees.Add(new TaskAssignee { EmployeeId = id });
         }
     }
 
@@ -976,5 +1088,9 @@
         public bool Removed { get; set; }
         public bool HasChecks { get; set; }
         public TimeSpan Hours { get; set; }
+        public DateTime? Deadline { get; set; }
+        public DateTime? OriginalDeadline { get; set; }
+        public List<string> AssigneeIds { get; set; } = new();
+        public string PickerKey { get; set; } = Guid.NewGuid().ToString("N");
     }
 }

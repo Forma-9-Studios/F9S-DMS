@@ -1,0 +1,770 @@
+﻿@page "/requests"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize]
+@implements IDisposable
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAppClock Clock
+@inject ILogger<Requests> Logger
+
+<PageTitle>My requests</PageTitle>
+
+<AppShell Active="requests" Title="My requests" Subtitle="File overtime and leave, see your leave balance and what was approved.">
+    <HeaderActions>
+        <button type="button" class="rq-btn rq-btn-overtime" @onclick="OpenOvertime">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            File overtime
+        </button>
+        <button type="button" class="rq-btn rq-btn-leave" @onclick="OpenLeave">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            File leave
+        </button>
+    </HeaderActions>
+    <ChildContent>
+        @if (message is not null)
+        {
+            <div class="rq-message @(messageIsError ? "error" : "")" role="status">@message</div>
+        }
+
+        @foreach (var day in unfiled)
+        {
+            <div class="rq-unfiled">
+                <span>You clocked <strong>@OvertimeRules.Format(day.Minutes)</strong> of overtime on @day.Date.ToString("ddd, MMM d") that isn't filed yet.</span>
+                <button type="button" class="rq-btn rq-btn-overtime rq-btn-sm" @onclick="() => FileUnfiled(day)">File it</button>
+            </div>
+        }
+
+        <div class="rq-tiles">
+            @if (balance is not null)
+            {
+                <BalanceTile Label="Vacation leave" Css="vacation" Balance="balance.Vacation" />
+                <BalanceTile Label="Sick leave" Css="sick" Balance="balance.Sick" />
+            }
+            <div class="rq-tile">
+                <div class="rq-tile-label">Pending requests</div>
+                <div class="rq-tile-value pending">@PendingCount</div>
+                <div class="rq-tile-sub">waiting for approval</div>
+            </div>
+            <div class="rq-tile">
+                <div class="rq-tile-label">Overtime this month</div>
+                <div class="rq-tile-value overtime">@OvertimeRules.Format(overtimeThisMonth)</div>
+                <div class="rq-tile-sub">approved</div>
+            </div>
+        </div>
+
+        <section class="rq-card">
+            <div class="rq-card-toolbar">
+                <div class="rq-tabs" role="tablist" aria-label="Request type">
+                    @foreach (var tab in new[] { "All", "Overtime", "Leave" })
+                    {
+                        <button type="button" role="tab" aria-selected="@(typeFilter == tab ? "true" : "false")" class="rq-tab @(typeFilter == tab ? "active" : "")" @onclick="() => typeFilter = tab">@tab</button>
+                    }
+                </div>
+                <span class="rq-muted">Newest first</span>
+            </div>
+
+            <div class="rq-table-scroll">
+                <table class="rq-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Date</th>
+                            <th>Details</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Decided by</th>
+                            <th><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in FilteredRows)
+                        {
+                            <tr>
+                                <td><span class="rq-pill @(row.IsOvertime ? "overtime" : "leave")">@(row.IsOvertime ? "Overtime" : "Leave")</span></td>
+                                <td class="rq-strong">@row.DateText</td>
+                                <td>@row.Details</td>
+                                <td class="rq-reason">
+                                    @row.Reason
+                                    @if (!string.IsNullOrWhiteSpace(row.Note))
+                                    {
+                                        <div class="rq-note @RequestOptions.StatusCss(row.Status)">Note: @row.Note</div>
+                                    }
+                                </td>
+                                <td><span class="rq-pill @RequestOptions.StatusCss(row.Status)">@row.Status</span></td>
+                                <td class="rq-muted">@row.DecidedText</td>
+                                <td class="rq-actions">
+                                    @if (row.Status == RequestOptions.StatusPending)
+                                    {
+                                        <button type="button" class="rq-link-btn" @onclick="() => CancelRequest(row)">Cancel</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (!loaded)
+            {
+                <div class="rq-empty">Loading requests…</div>
+            }
+            else if (!FilteredRows.Any())
+            {
+                <div class="rq-empty">No requests yet. Use File overtime or File leave above.</div>
+            }
+        </section>
+
+        @* ---------- File overtime ---------- *@
+        @if (showOvertime)
+        {
+            <div class="rq-overlay">
+                <div class="rq-modal" role="dialog" aria-labelledby="otTitle">
+                    <div class="rq-modal-header overtime">
+                        <h2 id="otTitle">File overtime</h2>
+                        <button type="button" class="rq-close" aria-label="Close" @onclick="() => showOvertime = false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+                    <div class="rq-modal-body">
+                        <div class="rq-seg">
+                            <button type="button" class="rq-seg-btn @(otKind == RequestOptions.OvertimePlanned ? "active" : "")" @onclick="() => SetOtKind(RequestOptions.OvertimePlanned)">
+                                <strong>Planned</strong><span>Before the shift, asking ahead</span>
+                            </button>
+                            <button type="button" class="rq-seg-btn @(otKind == RequestOptions.OvertimeWorked ? "active" : "")" @onclick="() => SetOtKind(RequestOptions.OvertimeWorked)">
+                                <strong>Already worked</strong><span>After the shift, hours done</span>
+                            </button>
+                        </div>
+
+                        <div class="rq-row">
+                            <div class="rq-field grow">
+                                <label for="otDate">Date</label>
+                                <input id="otDate" type="date" class="rq-input" @bind="otDate" />
+                            </div>
+                            @if (otKind == RequestOptions.OvertimePlanned)
+                            {
+                                <div class="rq-field">
+                                    <label for="otFrom">From</label>
+                                    <input id="otFrom" type="time" class="rq-input" @bind="otFrom" />
+                                </div>
+                                <div class="rq-field">
+                                    <label for="otTo">To</label>
+                                    <input id="otTo" type="time" class="rq-input" @bind="otTo" />
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="rq-field">
+                                    <label for="otHours">Hours</label>
+                                    <input id="otHours" type="number" min="0" max="16" class="rq-input" @bind="otHours" />
+                                </div>
+                                <div class="rq-field">
+                                    <label for="otMinutes">Minutes</label>
+                                    <select id="otMinutes" class="rq-input" @bind="otMinutes">
+                                        @foreach (var m in new[] { 0, 15, 30, 45 })
+                                        {
+                                            <option value="@m">@m</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="rq-total">Total <strong class="overtime">@(OtMinutes > 0 ? OvertimeRules.Format(OtMinutes) : "—")</strong> beyond the regular 8 hours</div>
+
+                        <div class="rq-field">
+                            <label for="otProject">Project <span class="rq-optional">(optional)</span></label>
+                            <select id="otProject" class="rq-input" @bind="otProjectId">
+                                <option value="0">No project</option>
+                                @foreach (var p in myProjects)
+                                {
+                                    <option value="@p.Id">@p.Code · @p.Sample</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="rq-field">
+                            <label for="otReason">Reason <span class="rq-req">*</span></label>
+                            <textarea id="otReason" class="rq-input" rows="3" maxlength="1000" @bind="otReason" placeholder="What the overtime is for"></textarea>
+                        </div>
+
+                        @if (otKind == RequestOptions.OvertimePlanned)
+                        {
+                            <div class="rq-callout">You're still logged out after your regular 8 hours. Log in again and the timer runs as overtime.</div>
+                        }
+                        else
+                        {
+                            <div class="rq-callout">The approver sees how much overtime you clocked that day.</div>
+                        }
+
+                        @if (formError is not null)
+                        {
+                            <div class="rq-error">@formError</div>
+                        }
+                    </div>
+                    <div class="rq-modal-footer">
+                        <button type="button" class="rq-btn-cancel" @onclick="() => showOvertime = false">Cancel</button>
+                        <button type="button" class="rq-btn rq-btn-overtime" @onclick="SubmitOvertime" disabled="@isSaving">@(isSaving ? "Sending…" : "Send for approval")</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ---------- File leave ---------- *@
+        @if (showLeave)
+        {
+            <div class="rq-overlay">
+                <div class="rq-modal" role="dialog" aria-labelledby="lvTitle">
+                    <div class="rq-modal-header leave">
+                        <h2 id="lvTitle">File leave</h2>
+                        <button type="button" class="rq-close" aria-label="Close" @onclick="() => showLeave = false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+                    <div class="rq-modal-body">
+                        <div class="rq-field">
+                            <span class="rq-label">Leave type</span>
+                            <div class="rq-chips">
+                                @foreach (var type in RequestOptions.LeaveTypes)
+                                {
+                                    <button type="button" class="rq-chip @(lvType == type ? "active" : "")" aria-pressed="@(lvType == type ? "true" : "false")" @onclick="() => lvType = type">@type</button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="rq-field">
+                            <span class="rq-label">Length</span>
+                            <div class="rq-seg">
+                                <button type="button" class="rq-seg-btn @(!lvHalfDay ? "active" : "")" @onclick="() => lvHalfDay = false">
+                                    <strong>Whole day(s)</strong><span>One or more full days</span>
+                                </button>
+                                <button type="button" class="rq-seg-btn @(lvHalfDay ? "active" : "")" @onclick="() => lvHalfDay = true">
+                                    <strong>Half day</strong><span>Morning (AM) or afternoon (PM)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="rq-row">
+                            @if (lvHalfDay)
+                            {
+                                <div class="rq-field grow">
+                                    <label for="lvDate">Date</label>
+                                    <input id="lvDate" type="date" class="rq-input" @bind="lvStart" />
+                                </div>
+                                <div class="rq-field grow">
+                                    <label for="lvPart">Part of the day</label>
+                                    <select id="lvPart" class="rq-input" @bind="lvPart">
+                                        <option value="@RequestOptions.HalfDayAm">Morning (AM)</option>
+                                        <option value="@RequestOptions.HalfDayPm">Afternoon (PM)</option>
+                                    </select>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="rq-field grow">
+                                    <label for="lvFrom">From</label>
+                                    <input id="lvFrom" type="date" class="rq-input" @bind="lvStart" />
+                                </div>
+                                <div class="rq-field grow">
+                                    <label for="lvTo">To</label>
+                                    <input id="lvTo" type="date" class="rq-input" @bind="lvEnd" />
+                                </div>
+                            }
+                        </div>
+
+                        <div class="rq-summary">
+                            <span>Total <strong>@LeaveRules.Days(LvTotal) @(LvTotal == 1 ? "day" : "days")</strong> · weekends not counted</span>
+                            @if (RequestOptions.UsesCredits(lvType) && balance is not null)
+                            {
+                                var available = balance.For(lvType).Available;
+                                var split = LeaveRules.Split(lvType, LvTotal, available);
+                                <span>
+                                    @lvType available <strong class="@(lvType == RequestOptions.LeaveSick ? "sick" : "vacation")">@LeaveRules.Days(available)</strong>
+                                    → after this <strong class="@(lvType == RequestOptions.LeaveSick ? "sick" : "vacation")">@LeaveRules.Days(available - split.Credit) days</strong>
+                                </span>
+                            }
+                            else if (lvType == RequestOptions.LeaveEmergency)
+                            {
+                                <span>Doesn't use your leave credits</span>
+                            }
+                            else
+                            {
+                                <span>Unpaid, doesn't use your leave credits</span>
+                            }
+                        </div>
+                        @if (RequestOptions.UsesCredits(lvType) && balance is not null)
+                        {
+                            var unpaid = LeaveRules.Split(lvType, LvTotal, balance.For(lvType).Available).Unpaid;
+                            if (unpaid > 0)
+                            {
+                                <div class="rq-warn">You only have @LeaveRules.Days(balance.For(lvType).Available) @lvType.ToLower() days left, so @LeaveRules.Days(unpaid) @(unpaid == 1 ? "day" : "days") will be filed as Unpaid.</div>
+                            }
+                        }
+
+                        <div class="rq-field">
+                            <label for="lvReason">Reason <span class="rq-req">*</span></label>
+                            <textarea id="lvReason" class="rq-input" rows="2" maxlength="1000" @bind="lvReason"></textarea>
+                        </div>
+
+                        <div class="rq-hint">Vacation is filed at least @policy.VacationNoticeDays @(policy.VacationNoticeDays == 1 ? "day" : "days") ahead. Sick and Emergency leave can be filed after. Days over your balance are filed as Unpaid.</div>
+
+                        @if (formError is not null)
+                        {
+                            <div class="rq-error">@formError</div>
+                        }
+                    </div>
+                    <div class="rq-modal-footer">
+                        <button type="button" class="rq-btn-cancel" @onclick="() => showLeave = false">Cancel</button>
+                        <button type="button" class="rq-btn rq-btn-leave" @onclick="SubmitLeave" disabled="@isSaving">@(isSaving ? "Sending…" : "Send for approval")</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private sealed record Row(int Id, bool IsOvertime, string DateText, string Details, string Reason, string Status, string? Note, string DecidedText, DateTime CreatedAt);
+    private sealed record ProjectOption(int Id, string Code, string Sample);
+    private sealed record UnfiledDay(DateTime Date, int Minutes);
+
+    private string? userId;
+    private bool loaded;
+    private bool isSaving;
+    private string typeFilter = "All";
+    private List<Row> rows = new();
+    private List<ProjectOption> myProjects = new();
+    private EmployeeLeave? balance;
+    private LeavePolicy policy = new();
+    private int overtimeThisMonth;
+    private List<UnfiledDay> unfiled = new();
+
+    private string? message;
+    private bool messageIsError;
+    private CancellationTokenSource? messageCts;
+    private string? formError;
+
+    // Overtime form
+    private bool showOvertime;
+    private string otKind = RequestOptions.OvertimePlanned;
+    private DateTime otDate;
+    private TimeOnly otFrom = new(18, 0);
+    private TimeOnly otTo = new(20, 0);
+    private int otHours = 1;
+    private int otMinutes;
+    private int otProjectId;
+    private string otReason = "";
+
+    // Leave form
+    private bool showLeave;
+    private string lvType = RequestOptions.LeaveVacation;
+    private bool lvHalfDay;
+    private string lvPart = RequestOptions.HalfDayAm;
+    private DateTime lvStart;
+    private DateTime lvEnd;
+    private string lvReason = "";
+
+    private int PendingCount => rows.Count(r => r.Status == RequestOptions.StatusPending);
+
+    private IEnumerable<Row> FilteredRows => typeFilter switch
+    {
+        "Overtime" => rows.Where(r => r.IsOvertime),
+        "Leave" => rows.Where(r => !r.IsOvertime),
+        _ => rows
+    };
+
+    private int OtMinutes
+    {
+        get
+        {
+            if (otKind == RequestOptions.OvertimePlanned)
+            {
+                var span = otTo.ToTimeSpan() - otFrom.ToTimeSpan();
+                if (span <= TimeSpan.Zero) span += TimeSpan.FromHours(24); // ends after midnight
+                return (int)span.TotalMinutes;
+            }
+            return Math.Max(0, otHours) * 60 + otMinutes;
+        }
+    }
+
+    private double LvTotal => lvHalfDay
+        ? (LeaveRules.CountWorkingDays(lvStart, lvStart) == 1 ? 0.5 : 0)
+        : (lvEnd < lvStart ? 0 : LeaveRules.CountWorkingDays(lvStart, lvEnd));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = UserManager.GetUserId(authState.User);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (userId is null) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var now = Clock.Now;
+        policy = await LeaveRules.GetPolicyAsync(db);
+
+        var me = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (me is not null)
+        {
+            var balances = await LeaveRules.GetBalancesAsync(db, new[] { me }, now.Year, now, policy);
+            balance = balances[me.Id];
+        }
+
+        var names = await db.Users.AsNoTracking()
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FirstName) ? (u.Email ?? "Someone") : u.FirstName);
+
+        string Decided(string? by, DateTime? at) =>
+            by is null || at is null ? "—" : $"{(names.TryGetValue(by, out var n) ? n : "Someone")} · {at.Value:MMM d}";
+
+        var overtime = await db.OvertimeRequests.AsNoTracking()
+            .Where(o => o.EmployeeId == userId)
+            .Include(o => o.Project)
+            .ToListAsync();
+        var leave = await db.LeaveRequests.AsNoTracking()
+            .Where(l => l.EmployeeId == userId)
+            .ToListAsync();
+
+        rows = overtime.Select(o => new Row(
+                o.Id, true,
+                o.Date.ToString("ddd, MMM d"),
+                RequestText.OvertimeDetails(o),
+                (o.Project is null ? "" : $"{o.Project.Code} · ") + o.Reason,
+                o.Status, o.DecisionNote, Decided(o.DecidedById, o.DecidedAt), o.CreatedAt))
+            .Concat(leave.Select(l => new Row(
+                l.Id, false,
+                RequestText.LeaveDateText(l),
+                RequestText.LeaveDetails(l),
+                l.Reason,
+                l.Status, l.DecisionNote, Decided(l.DecidedById, l.DecidedAt), l.CreatedAt)))
+            .OrderByDescending(r => r.CreatedAt)
+            .ToList();
+
+        // Overtime clocked in the last 30 days (logging in again after the 8 hours) without a request.
+        var since = now.Date.AddDays(-30);
+        var overtimeSessions = await db.AttendanceSessions.AsNoTracking()
+            .Where(s => s.EmployeeId == userId && s.IsOvertime && s.ClockInTime >= since && s.ClockOutTime != null)
+            .Select(s => new { s.ClockInTime, s.ClockOutTime })
+            .ToListAsync();
+        var filedDays = overtime
+            .Where(o => o.Status == RequestOptions.StatusPending || o.Status == RequestOptions.StatusApproved)
+            .Select(o => o.Date.Date)
+            .ToHashSet();
+        unfiled = overtimeSessions
+            .GroupBy(s => s.ClockInTime.Date)
+            .Where(g => !filedDays.Contains(g.Key))
+            .Select(g => new UnfiledDay(g.Key, (int)g.Sum(s => (s.ClockOutTime!.Value - s.ClockInTime).TotalMinutes)))
+            .Where(d => d.Minutes >= 15)
+            .OrderByDescending(d => d.Date)
+            .ToList();
+
+        var monthStart = new DateTime(now.Year, now.Month, 1);
+        overtimeThisMonth = overtime
+            .Where(o => o.Status == RequestOptions.StatusApproved && o.Date >= monthStart && o.Date < monthStart.AddMonths(1))
+            .Sum(o => o.Minutes);
+
+        var assigned = await db.ProjectAssignments.AsNoTracking()
+            .Where(a => a.EmployeeId == userId && a.Project != null)
+            .Select(a => new { a.Project!.Id, a.Project.Sample, a.Project.Status })
+            .ToListAsync();
+        myProjects = assigned
+            .Where(p => p.Status != "Completed")
+            .DistinctBy(p => p.Id)
+            .OrderBy(p => p.Id)
+            .Select(p => new ProjectOption(p.Id, Project.FormatCode(p.Id), p.Sample))
+            .ToList();
+
+        loaded = true;
+    }
+
+    private void OpenOvertime()
+    {
+        formError = null;
+        otKind = RequestOptions.OvertimePlanned;
+        otDate = Clock.Now.Date;
+        otFrom = new TimeOnly(18, 0);
+        otTo = new TimeOnly(20, 0);
+        otHours = 1;
+        otMinutes = 0;
+        otProjectId = 0;
+        otReason = "";
+        showOvertime = true;
+    }
+
+    private void FileUnfiled(UnfiledDay day)
+    {
+        OpenOvertime();
+        otKind = RequestOptions.OvertimeWorked;
+        otDate = day.Date;
+        var rounded = (int)(Math.Round(day.Minutes / 15.0) * 15);
+        otHours = rounded / 60;
+        otMinutes = rounded % 60;
+    }
+
+    private void SetOtKind(string kind)
+    {
+        otKind = kind;
+        formError = null;
+    }
+
+    private void OpenLeave()
+    {
+        formError = null;
+        lvType = RequestOptions.LeaveVacation;
+        lvHalfDay = false;
+        lvPart = RequestOptions.HalfDayAm;
+        var start = Clock.Now.Date.AddDays(Math.Max(1, policy.VacationNoticeDays));
+        while (start.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) start = start.AddDays(1);
+        lvStart = start;
+        lvEnd = start;
+        lvReason = "";
+        showLeave = true;
+    }
+
+    private async Task SubmitOvertime()
+    {
+        if (userId is null || isSaving) return;
+        formError = null;
+
+        var today = Clock.Now.Date;
+        var minutes = OtMinutes;
+        if (otKind == RequestOptions.OvertimePlanned && otDate.Date < today)
+        {
+            formError = "Planned overtime can't be in the past. Choose Already worked for hours you've done.";
+            return;
+        }
+        if (otKind == RequestOptions.OvertimeWorked && otDate.Date > today)
+        {
+            formError = "Already worked overtime can't be in the future. Choose Planned instead.";
+            return;
+        }
+        if (minutes <= 0 || minutes > 16 * 60)
+        {
+            formError = "Enter between 15 minutes and 16 hours of overtime.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(otReason))
+        {
+            formError = "Please add a reason.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var day = otDate.Date;
+            var duplicate = await db.OvertimeRequests.AnyAsync(o => o.EmployeeId == userId && o.Date == day
+                && (o.Status == RequestOptions.StatusPending || o.Status == RequestOptions.StatusApproved));
+            if (duplicate)
+            {
+                formError = $"You already have overtime filed for {day:MMM d}. Cancel it first if you need to change it.";
+                return;
+            }
+
+            var request = new OvertimeRequest
+            {
+                EmployeeId = userId,
+                Kind = otKind,
+                Date = day,
+                StartTime = otKind == RequestOptions.OvertimePlanned ? otFrom.ToTimeSpan() : null,
+                EndTime = otKind == RequestOptions.OvertimePlanned ? otTo.ToTimeSpan() : null,
+                Minutes = minutes,
+                ProjectId = otProjectId > 0 && myProjects.Any(p => p.Id == otProjectId) ? otProjectId : null,
+                Reason = otReason.Trim(),
+                Status = RequestOptions.StatusPending,
+                CreatedAt = Clock.Now
+            };
+            db.OvertimeRequests.Add(request);
+            await db.SaveChangesAsync();
+
+            showOvertime = false;
+            await LoadAsync();
+            ShowMessage($"Overtime for {day:MMM d} ({OvertimeRules.Format(minutes)}) was sent for approval.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Filing overtime failed.");
+            formError = "Something went wrong while sending the request. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task SubmitLeave()
+    {
+        if (userId is null || isSaving) return;
+        formError = null;
+
+        var today = Clock.Now.Date;
+        var start = lvStart.Date;
+        var end = lvHalfDay ? start : lvEnd.Date;
+        var total = LvTotal;
+
+        if (end < start)
+        {
+            formError = "The end date is before the start date.";
+            return;
+        }
+        if (total <= 0)
+        {
+            formError = "These dates fall on a weekend. Choose at least one weekday.";
+            return;
+        }
+        if (lvType == RequestOptions.LeaveVacation && start < today.AddDays(policy.VacationNoticeDays))
+        {
+            formError = $"Vacation must be filed at least {policy.VacationNoticeDays} {(policy.VacationNoticeDays == 1 ? "day" : "days")} ahead (from {today.AddDays(policy.VacationNoticeDays):MMM d}). For something urgent, use Emergency leave.";
+            return;
+        }
+        if (lvType == RequestOptions.LeaveUnpaid && start < today)
+        {
+            formError = "Unpaid leave can't start in the past.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(lvReason))
+        {
+            formError = "Please add a reason.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var overlaps = await db.LeaveRequests.AnyAsync(l => l.EmployeeId == userId
+                && (l.Status == RequestOptions.StatusPending || l.Status == RequestOptions.StatusApproved)
+                && l.StartDate <= end && l.EndDate >= start);
+            if (overlaps)
+            {
+                formError = "You already have leave filed on some of these dates.";
+                return;
+            }
+
+            // Work out the balance fresh, in the year the leave starts.
+            double available = 0;
+            if (RequestOptions.UsesCredits(lvType))
+            {
+                var me = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId);
+                var asOf = start.Year == today.Year ? Clock.Now : new DateTime(start.Year, 1, 1);
+                var balances = await LeaveRules.GetBalancesAsync(db, new[] { me }, start.Year, asOf, policy);
+                available = balances[me.Id].For(lvType).Available;
+            }
+            var split = LeaveRules.Split(lvType, total, available);
+
+            db.LeaveRequests.Add(new LeaveRequest
+            {
+                EmployeeId = userId,
+                LeaveType = lvType,
+                StartDate = start,
+                EndDate = end,
+                IsHalfDay = lvHalfDay,
+                HalfDayPart = lvHalfDay ? lvPart : null,
+                TotalDays = total,
+                CreditDays = split.Credit,
+                UnpaidDays = split.Unpaid,
+                Reason = lvReason.Trim(),
+                Status = RequestOptions.StatusPending,
+                CreatedAt = Clock.Now
+            });
+            await db.SaveChangesAsync();
+
+            showLeave = false;
+            await LoadAsync();
+            ShowMessage($"{lvType} leave ({LeaveRules.Days(total)} {(total == 1 ? "day" : "days")}) was sent for approval.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Filing leave failed.");
+            formError = "Something went wrong while sending the request. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task CancelRequest(Row row)
+    {
+        if (userId is null) return;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var changed = false;
+            if (row.IsOvertime)
+            {
+                var o = await db.OvertimeRequests.FirstOrDefaultAsync(x => x.Id == row.Id && x.EmployeeId == userId);
+                if (o is not null && o.Status == RequestOptions.StatusPending)
+                {
+                    o.Status = RequestOptions.StatusCancelled;
+                    changed = true;
+                }
+            }
+            else
+            {
+                var l = await db.LeaveRequests.FirstOrDefaultAsync(x => x.Id == row.Id && x.EmployeeId == userId);
+                if (l is not null && l.Status == RequestOptions.StatusPending)
+                {
+                    l.Status = RequestOptions.StatusCancelled;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await db.SaveChangesAsync();
+                ShowMessage("The request was cancelled.");
+            }
+            else
+            {
+                ShowMessage("That request was already decided, so it can't be cancelled.", true);
+            }
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Cancelling a request failed.");
+            ShowMessage("Something went wrong while cancelling. Please try again.", true);
+        }
+    }
+
+    private void ShowMessage(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+        messageCts?.Cancel();
+        messageCts = new CancellationTokenSource();
+        var token = messageCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(isError ? 10 : 6), token);
+                await InvokeAsync(() =>
+                {
+                    message = null;
+                    StateHasChanged();
+                });
+            }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        });
+    }
+
+    public void Dispose()
+    {
+        messageCts?.Cancel();
+        messageCts?.Dispose();
+    }
+}

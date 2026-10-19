@@ -13,6 +13,12 @@ namespace F9SDMS.Data
         public DbSet<CheckSubmission> CheckSubmissions => Set<CheckSubmission>();
         public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
         public DbSet<CheckReview> CheckReviews => Set<CheckReview>();
+        public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
+        public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+        public DbSet<LeaveAdjustment> LeaveAdjustments => Set<LeaveAdjustment>();
+        public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
+        public DbSet<TaskAssignee> TaskAssignees => Set<TaskAssignee>();
+        public DbSet<Notification> Notifications => Set<Notification>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -82,6 +88,39 @@ namespace F9SDMS.Data
                 .WithMany(c => c.Reviews)
                 .HasForeignKey(r => r.SubmissionId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Overtime and leave requests.
+            builder.Entity<OvertimeRequest>().HasIndex(o => new { o.EmployeeId, o.Date });
+            builder.Entity<OvertimeRequest>().HasIndex(o => o.Status);
+            builder.Entity<OvertimeRequest>()
+                .HasOne(o => o.Project)
+                .WithMany()
+                .HasForeignKey(o => o.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+            builder.Entity<LeaveRequest>().HasIndex(l => new { l.EmployeeId, l.StartDate });
+            builder.Entity<LeaveRequest>().HasIndex(l => l.Status);
+            builder.Entity<LeaveAdjustment>().HasIndex(a => new { a.EmployeeId, a.Year });
+
+            // Task assignees and the notification bell.
+            builder.Entity<TaskAssignee>()
+                .HasOne(a => a.Task)
+                .WithMany(t => t.Assignees)
+                .HasForeignKey(a => a.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Entity<TaskAssignee>().HasIndex(a => new { a.TaskId, a.EmployeeId }).IsUnique();
+            builder.Entity<TaskAssignee>().HasIndex(a => a.EmployeeId);
+            builder.Entity<Notification>().HasIndex(n => new { n.UserId, n.ReadAt });
+            builder.Entity<Notification>().HasIndex(n => n.TaskId);
+
+            // The company's leave policy: one row, created with the defaults.
+            builder.Entity<LeavePolicy>().HasData(new LeavePolicy
+            {
+                Id = 1,
+                VacationDaysPerYear = 15,
+                SickDaysPerYear = 10,
+                VacationNoticeDays = 3,
+                CarryOverMaxDays = 5
+            });
         }
     }
 }

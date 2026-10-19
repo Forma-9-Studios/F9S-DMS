@@ -114,6 +114,10 @@
     background: rgba(255,255,255,0.35);
 }
 
+.status-dot-overtime {
+    background: #a087ff;
+}
+
 .clock-in-btn {
     margin-top: 14px;
     background: #098993;

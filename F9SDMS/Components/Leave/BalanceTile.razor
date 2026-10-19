@@ -1,0 +1,43 @@
+﻿@using F9SDMS.Services
+
+@* One leave balance as a summary tile: available days, what's earned/used/pending, and a bar. *@
+
+<div class="rq-tile">
+    <div class="rq-tile-label">@Label</div>
+    <div class="rq-tile-value @Css">@LeaveRules.Days(Balance.Available) <span class="rq-tile-unit">@(Balance.Available == 1 ? "day" : "days")</span></div>
+    <div class="rq-tile-sub">
+        available · @LeaveRules.Days(Balance.Earned) earned
+        @if (Balance.Carried > 0)
+        {
+            <text> · @LeaveRules.Days(Balance.Carried) carried over</text>
+        }
+        @if (Balance.Adjusted != 0)
+        {
+            <text> · @(Balance.Adjusted > 0 ? "+" : "")@LeaveRules.Days(Balance.Adjusted) adjusted</text>
+        }
+        · @LeaveRules.Days(Balance.Used) used
+        @if (Balance.Pending > 0)
+        {
+            <text> · @LeaveRules.Days(Balance.Pending) pending</text>
+        }
+    </div>
+    @if (Balance.Total > 0)
+    {
+        <div class="rq-bar @Css" aria-hidden="true">
+            <span class="rq-bar-used" style="width: @Percent(Balance.Used)%"></span>
+            <span class="rq-bar-pending" style="width: @Percent(Balance.Pending)%"></span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+
+    /// <summary>"vacation" or "sick" (sets the colour).</summary>
+    [Parameter] public string Css { get; set; } = "vacation";
+
+    [Parameter, EditorRequired] public LeaveBalance Balance { get; set; } = new(0, 0, 0, 0, 0);
+
+    private string Percent(double days) =>
+        (Math.Clamp(days / Balance.Total, 0, 1) * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+}

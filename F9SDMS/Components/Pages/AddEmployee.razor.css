@@ -168,3 +168,8 @@
         grid-template-columns: 1fr;
     }
 }
+
+.optional-label {
+    font-weight: 400;
+    opacity: 0.7;
+}

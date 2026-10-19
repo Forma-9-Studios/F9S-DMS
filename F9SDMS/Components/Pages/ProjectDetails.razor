@@ -168,6 +168,24 @@
                     </div>
                 </div>
 
+                @if (DeadlineCounts.Overdue + DeadlineCounts.Today + DeadlineCounts.Tomorrow > 0)
+                {
+                    <div class="deadline-summary">
+                        @if (DeadlineCounts.Overdue > 0)
+                        {
+                            <span class="due-chip due-overdue">@DeadlineCounts.Overdue overdue</span>
+                        }
+                        @if (DeadlineCounts.Today > 0)
+                        {
+                            <span class="due-chip due-today">@DeadlineCounts.Today due today</span>
+                        }
+                        @if (DeadlineCounts.Tomorrow > 0)
+                        {
+                            <span class="due-chip due-tomorrow">@DeadlineCounts.Tomorrow due tomorrow</span>
+                        }
+                    </div>
+                }
+
                 @if (!hasSubcategories && wholeProject is null)
                 {
                     <div class="breakdown-empty">
@@ -180,6 +198,7 @@
                     <div class="task-grid task-head" aria-hidden="true">
                         <span>@(hasSubcategories ? "Task" : "Part")</span>
                         <span>Stage</span>
+                        <span>@(hasSubcategories ? "Deadline" : "")</span>
                         <span>With</span>
                         <span class="num">Modeling</span>
                         <span class="num">Checking</span>
@@ -202,6 +221,7 @@
                                 <span class="part-pill part-@ProjectOptions.StatusCss(group.Status)">@group.Status</span>
                             }
                         </span>
+                        <span></span>
                         <span class="sub-group-progress">@(group.Tasks.Count == 0 ? "No tasks yet" : $"{group.Tasks.Count(t => t.Status == ProjectOptions.StatusApproved)} of {group.Tasks.Count} approved")</span>
                         <span class="breakdown-hours">@FormatDuration(group.Modeling)</span>
                         <span class="breakdown-hours checking-hours">@FormatDuration(group.Checking)</span>
@@ -218,6 +238,12 @@
                                    value="@NewTaskName(groupSubId)"
                                    @oninput="e => SetNewTaskName(groupSubId, e)"
                                    @onkeydown="e => NewTaskKeyDown(groupSubId, e)" />
+                            <label class="task-add-deadline">
+                                Deadline
+                                <input type="date" class="breakdown-input" aria-label="Deadline for the new task under @group.Name"
+                                       value="@NewTaskDeadline(groupSubId).ToString("yyyy-MM-dd")"
+                                       @onchange="e => SetNewTaskDeadline(groupSubId, e)" />
+                            </label>
                             <button type="button" class="row-link" @onclick="() => AddTask(groupSubId)" disabled="@isSaving">+ Add task</button>
                         </div>
                     }
@@ -227,6 +253,7 @@
                 {
                     <div class="task-grid sub-group-row">
                         <span class="sub-group-name">@generalRow.Name</span>
+                        <span></span>
                         <span></span>
                         <span class="sub-group-progress">Logged before tasks were added</span>
                         <span class="breakdown-hours">@FormatDuration(generalRow.Modeling)</span>
@@ -400,6 +427,65 @@
                                    OnClose="OnSubmitClosed" />
             }
         }
+
+        @if (editingTaskId is not null)
+        {
+            <div class="rq-overlay">
+                <div class="rq-modal" role="dialog" aria-labelledby="taskEditTitle">
+                    <div class="rq-modal-header leave">
+                        <h2 id="taskEditTitle">@editingTaskName</h2>
+                        <button type="button" class="rq-close" aria-label="Close" @onclick="() => editingTaskId = null">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+                    <div class="rq-modal-body">
+                        <div class="rq-field">
+                            <label for="taskDeadline">Deadline <span class="rq-req">*</span></label>
+                            <input id="taskDeadline" type="date" class="rq-input" @bind="editDeadline" />
+                            <span class="rq-hint">Project due @project!.DueDate.ToString("MMM d, yyyy"). Assignees and the project manager are reminded the working day before.</span>
+                        </div>
+                        <div class="rq-field">
+                            <span class="rq-label">Assigned to</span>
+                            <div class="rq-chips">
+                                @foreach (var id in editAssignees.ToList())
+                                {
+                                    var person = engineerOptions.FirstOrDefault(x => x.Id == id);
+                                    if (person.Id is null) continue;
+                                    <span class="rq-chip active rq-chip-removable">
+                                        @person.Name
+                                        <button type="button" class="rq-chip-x" aria-label="Remove @person.Name" @onclick="() => editAssignees.Remove(id)">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="12" height="12"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                                        </button>
+                                    </span>
+                                }
+                            </div>
+                            @if (engineerOptions.Any(x => !editAssignees.Contains(x.Id)))
+                            {
+                                <select class="rq-input" aria-label="Add someone" @key="editPickerKey" @onchange="AddEditAssignee">
+                                    <option value="">Add an engineer…</option>
+                                    @foreach (var option in engineerOptions.Where(x => !editAssignees.Contains(x.Id)))
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </select>
+                            }
+                            else if (engineerOptions.Count == 0)
+                            {
+                                <span class="rq-hint">This project has no engineers yet.</span>
+                            }
+                        </div>
+                        @if (editError is not null)
+                        {
+                            <div class="rq-error">@editError</div>
+                        }
+                    </div>
+                    <div class="rq-modal-footer">
+                        <button type="button" class="rq-btn-cancel" @onclick="() => editingTaskId = null">Cancel</button>
+                        <button type="button" class="rq-btn rq-btn-leave" @onclick="SaveTaskEdit" disabled="@isSaving">Save</button>
+                    </div>
+                </div>
+            </div>
+        }
     </ChildContent>
 </AppShell>
 
@@ -433,6 +519,30 @@
     private string historyFilter = "";
     private string newSubName = "";
     private Dictionary<int, string> newTaskNames = new();
+    private Dictionary<int, DateTime> newTaskDeadlines = new();
+    private List<(string Id, string Name)> engineerOptions = new();
+    private Dictionary<int, List<string>> assigneeIdsByTask = new();
+
+    // Edit task dialog (deadline and assignees).
+    private int? editingTaskId;
+    private string editingTaskName = "";
+    private string editingTaskStatus = "";
+    private DateTime? editDeadline;
+    private DateTime? editOriginalDeadline;
+    private List<string> editAssignees = new();
+    private string editPickerKey = Guid.NewGuid().ToString("N");
+    private string? editError;
+
+    private (int Overdue, int Today, int Tomorrow) DeadlineCounts
+    {
+        get
+        {
+            var today = Clock.Now;
+            var kinds = ActiveTasks.Where(t => !t.Archived && t.Deadline is not null)
+                .Select(t => TaskReminders.DueKind(t.Deadline, today, t.Status)).ToList();
+            return (kinds.Count(k => k == "overdue"), kinds.Count(k => k == "today"), kinds.Count(k => k == "tomorrow"));
+        }
+    }
     private string? subMessage;
     private bool isExporting;
 
@@ -470,7 +580,13 @@
 
     // One row of the tasks table (a task, or the whole project when it has no sub-categories).
     private RenderFragment PartRow(PartRowData part) => @<div class="task-grid task-row @(part.Archived ? "archived" : "")">
-        <span class="task-name @(part.TaskId is null ? "" : "indent")">@part.Name@(part.Archived ? " (archived)" : "")</span>
+        <span class="task-name @(part.TaskId is null ? "" : "indent")">
+            @part.Name@(part.Archived ? " (archived)" : "")
+            @if (!string.IsNullOrEmpty(part.Assigned))
+            {
+                <span class="task-assigned">@part.Assigned</span>
+            }
+        </span>
         <span>
             <span class="part-pill part-@part.StageCss">
                 @if (ProjectOptions.IsInReview(part.Status))
@@ -479,6 +595,12 @@
                 }
                 @part.StageLabel@(part.Round > 0 ? $" · R{part.Round}" : "")
             </span>
+        </span>
+        <span>
+            @if (part.Deadline is DateTime deadline)
+            {
+                <span class="due-chip due-@(TaskReminders.DueKind(deadline, Clock.Now, part.Status))">@TaskReminders.DueLabel(deadline, Clock.Now, part.Status)</span>
+            }
         </span>
         <span class="task-with">@part.With</span>
         <span class="breakdown-hours">@FormatDuration(part.Modeling)</span>
@@ -499,6 +621,10 @@
             @if (part.Round > 0)
             {
                 <button type="button" class="row-link" @onclick="() => ShowHistory(part.Key)">History</button>
+            }
+            @if (canAddTasks && !part.Archived && part.TaskId is int editTaskId)
+            {
+                <button type="button" class="row-link" @onclick="() => OpenTaskEdit(editTaskId)">Edit</button>
             }
         </span>
     </div>;
@@ -545,7 +671,13 @@
         var now = Clock.Now;
         var timeEntries = await db.ProjectTimeEntries.AsNoTracking().Where(t => t.ProjectId == ProjectId).OrderByDescending(t => t.StartTime).ToListAsync();
         var subs = await db.ProjectSubcategories.AsNoTracking().Where(x => x.ProjectId == ProjectId).OrderBy(x => x.Id).ToListAsync();
-        var tasks = await db.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == ProjectId).OrderBy(t => t.Id).ToListAsync();
+        var tasks = await db.ProjectTasks.AsNoTracking().Include(t => t.Assignees).Where(t => t.ProjectId == ProjectId).OrderBy(t => t.Id).ToListAsync();
+        engineerOptions = project.Assignments
+            .Where(a => a.Role != ProjectOptions.RoleChecker)
+            .Select(a => (a.EmployeeId, NameOf(a.EmployeeId)))
+            .OrderBy(x => x.Item2)
+            .ToList();
+        assigneeIdsByTask = tasks.ToDictionary(t => t.Id, t => t.Assignees.Select(a => a.EmployeeId).ToList());
         var submissions = await db.CheckSubmissions
             .AsNoTracking()
             .Include(c => c.Reviews)
@@ -613,8 +745,13 @@
                 _ => (status, ProjectOptions.StatusCss(status))
             };
 
+            var taskRow = taskId is int tId && taskById.TryGetValue(tId, out var tr) ? tr : null;
+            var assigned = taskRow is null || taskRow.Assignees.Count == 0
+                ? (taskRow is null ? "" : "Not assigned")
+                : string.Join(", ", taskRow.Assignees.Select(a => NameOf(a.EmployeeId).Split(' ')[0]));
+
             return new PartRowData(key, name, taskId, status, label, css, with, Sum(list, false), Sum(list, true),
-                archived, latest?.Round ?? 0, open?.Id);
+                archived, latest?.Round ?? 0, open?.Id, taskRow?.Deadline, assigned);
         }
 
         groups = new();
@@ -770,6 +907,99 @@
     private void SetNewTaskName(int subcategoryId, ChangeEventArgs e) =>
         newTaskNames[subcategoryId] = e.Value?.ToString() ?? "";
 
+    private DateTime NewTaskDeadline(int subcategoryId) =>
+        newTaskDeadlines.TryGetValue(subcategoryId, out var d) ? d : (project?.DueDate.Date ?? Clock.Now.Date);
+
+    private void SetNewTaskDeadline(int subcategoryId, ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+        {
+            newTaskDeadlines[subcategoryId] = d.Date;
+        }
+    }
+
+    private void OpenTaskEdit(int taskId)
+    {
+        var part = groups.SelectMany(g => g.Tasks).FirstOrDefault(t => t.TaskId == taskId);
+        if (part is null || !canAddTasks) return;
+
+        editingTaskId = taskId;
+        editingTaskName = part.Name;
+        editingTaskStatus = part.Status;
+        editDeadline = part.Deadline;
+        editOriginalDeadline = part.Deadline;
+        editAssignees = assigneeIdsByTask.TryGetValue(taskId, out var ids) ? ids.ToList() : new();
+        editError = null;
+    }
+
+    private void AddEditAssignee(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(id) && !editAssignees.Contains(id)) editAssignees.Add(id);
+        editPickerKey = Guid.NewGuid().ToString("N");
+    }
+
+    private async Task SaveTaskEdit()
+    {
+        if (editingTaskId is not int taskId || project is null || !canAddTasks || isSaving) return;
+        editError = null;
+
+        var today = Clock.Now.Date;
+        if (editDeadline is not DateTime deadline)
+        {
+            editError = "Pick a deadline.";
+            return;
+        }
+        if (deadline.Date > project.DueDate.Date)
+        {
+            editError = $"Can't be after the project's due date ({project.DueDate:MMM d}).";
+            return;
+        }
+        if (editOriginalDeadline?.Date != deadline.Date && deadline.Date < today && editingTaskStatus != ProjectOptions.StatusApproved)
+        {
+            editError = "Can't be in the past.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var task = await db.ProjectTasks.Include(t => t.Assignees).FirstOrDefaultAsync(t => t.Id == taskId && t.ProjectId == ProjectId);
+            if (task is null)
+            {
+                editError = "That task no longer exists.";
+                return;
+            }
+
+            var engineers = engineerOptions.Select(x => x.Id).ToHashSet();
+            var wanted = editAssignees.Where(engineers.Contains).Distinct().ToList();
+            task.Deadline = deadline.Date;
+            task.Assignees.RemoveAll(a => !wanted.Contains(a.EmployeeId));
+            foreach (var id in wanted.Where(id => task.Assignees.All(a => a.EmployeeId != id)))
+            {
+                task.Assignees.Add(new TaskAssignee { EmployeeId = id });
+            }
+            await db.SaveChangesAsync();
+
+            // Reminders follow the new deadline and assignees right away.
+            await TaskReminders.SyncAsync(db, Clock.Now, taskId);
+
+            editingTaskId = null;
+            await LoadAsync();
+            ShowMessage($"Saved {editingTaskName}.", false);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving a task's deadline failed.");
+            editError = "Couldn't save. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
     private async Task NewTaskKeyDown(int subcategoryId, KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await AddTask(subcategoryId);
@@ -897,12 +1127,26 @@
                 return;
             }
 
-            sub.Tasks.Add(new ProjectTask { ProjectId = ProjectId, Name = name, CreatedAt = Clock.Now });
+            var newDeadline = NewTaskDeadline(subcategoryId);
+            if (newDeadline > tracked.DueDate.Date)
+            {
+                subMessage = $"The deadline can't be after the project's due date ({tracked.DueDate:MMM d}).";
+                return;
+            }
+            if (newDeadline < Clock.Now.Date)
+            {
+                subMessage = "The deadline can't be in the past.";
+                return;
+            }
+
+            sub.Tasks.Add(new ProjectTask { ProjectId = ProjectId, Name = name, CreatedAt = Clock.Now, Deadline = newDeadline });
 
             // A new task means the sub-category (and project) is no longer complete.
             ProjectChecking.Recompute(tracked);
             await db.SaveChangesAsync();
             newTaskNames.Remove(subcategoryId);
+            newTaskDeadlines.Remove(subcategoryId);
+            await TaskReminders.SyncAsync(db, Clock.Now);
             await LoadAsync();
         }
         catch (Exception ex)
@@ -1045,7 +1289,7 @@
     private sealed record LogRow(string Name, DateTime Start, DateTime? End, TimeSpan Duration, string SubKey, int? TaskId, string PartName, string WorkType);
 
     private sealed record PartRowData(string Key, string Name, int? TaskId, string Status, string StageLabel, string StageCss, string With,
-        TimeSpan Modeling, TimeSpan Checking, bool Archived, int Round, int? OpenSubmissionId);
+        TimeSpan Modeling, TimeSpan Checking, bool Archived, int Round, int? OpenSubmissionId, DateTime? Deadline = null, string Assigned = "");
 
     private sealed record GroupRow(int? SubcategoryId, string Name, string? Status, bool Archived, TimeSpan Modeling, TimeSpan Checking, List<PartRowData> Tasks);
 

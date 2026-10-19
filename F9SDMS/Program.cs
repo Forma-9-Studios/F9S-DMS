@@ -19,6 +19,7 @@ builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddHostedService<StaleSessionCleanupService>();
+builder.Services.AddHostedService<DeadlineReminderService>();
 builder.Services.AddSingleton<IAppClock, AppClock>();
 builder.Services.AddSingleton<CheckFileStore>();
 
@@ -68,6 +69,8 @@ using (var scope = app.Services.CreateScope())
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var clock = scope.ServiceProvider.GetRequiredService<IAppClock>();
         await ProjectChecking.BackfillAsync(db, clock.Now);
+        // Tasks made before deadlines existed get their project's due date.
+        await TaskReminders.BackfillDeadlinesAsync(db);
     }
     catch (Exception ex)
     {
