@@ -45,6 +45,9 @@ namespace F9SDMS.Migrations
                     b.Property<int?>("CurrentTaskId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
@@ -65,6 +68,9 @@ namespace F9SDMS.Migrations
 
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
@@ -87,6 +93,9 @@ namespace F9SDMS.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("StartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TeamManagerId")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("TwoFactorEnabled")

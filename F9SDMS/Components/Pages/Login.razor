@@ -108,11 +108,19 @@
         // below replaces their cookie, so they are effectively logged out.
         var previousUserId = SignInManager.UserManager.GetUserId(HttpContext.User);
 
+        // Deactivated accounts can't sign in, even with the right password.
+        var existing = await SignInManager.UserManager.FindByEmailAsync(Input.Email);
+        if (existing?.DeactivatedAt is not null)
+        {
+            errorMessage = "Error: This account has been deactivated. Please contact your admin.";
+            return;
+        }
+
         // Failed attempts count towards lockout (default: 5 failures locks the account for 5 minutes).
         var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: true);
         if (result.Succeeded)
         {
-            Logger.LogInformation("User logged in.");
+            Logger.LogInformation("User {Email} logged in.", Input.Email);
 
             var user = await SignInManager.UserManager.FindByEmailAsync(Input.Email);
 
@@ -161,6 +169,7 @@
         }
         else
         {
+            Logger.LogWarning("Sign-in failed for {Email}: {Result}.", Input.Email, result);
             errorMessage = "Error: Invalid login attempt.";
         }
     }

@@ -109,3 +109,35 @@ f9sdms.toggleTheme = function () {
     // Safety net: never leave the loader up.
     window.addEventListener('load', hide);
 })();
+
+// ---- Password rules on the change / set password pages: tick them off while typing ----
+(function () {
+    function updateRules(list) {
+        var input = document.getElementById(list.dataset.new);
+        if (!input) return;
+        var v = input.value || '';
+        var current = list.dataset.current ? document.getElementById(list.dataset.current) : null;
+        var checks = {
+            length: v.length >= 8,
+            cases: /[a-z]/.test(v) && /[A-Z]/.test(v),
+            digit: /[0-9]/.test(v),
+            different: v.length > 0 && (!current || v !== current.value)
+        };
+        list.querySelectorAll('li[data-rule]').forEach(function (li) {
+            li.classList.toggle('met', !!checks[li.dataset.rule]);
+        });
+    }
+    document.addEventListener('input', function (e) {
+        if (!e.target || !e.target.id) return;
+        document.querySelectorAll('.pw-rules').forEach(function (list) {
+            if (e.target.id === list.dataset.new || e.target.id === list.dataset.current) updateRules(list);
+        });
+    });
+
+    // Close the account menu when clicking anywhere else.
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('details.avatar-menu[open]').forEach(function (menu) {
+            if (!menu.contains(e.target)) menu.removeAttribute('open');
+        });
+    });
+})();

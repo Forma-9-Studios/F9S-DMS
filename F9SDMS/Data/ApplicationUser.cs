@@ -26,5 +26,20 @@ namespace F9SDMS.Data
         /// (from January 1 when it isn't set).
         /// </summary>
         public DateTime? StartDate { get; set; }
+
+        /// <summary>
+        /// Set when the admin creates the account or resets the password: the person must choose
+        /// their own password before using the app.
+        /// </summary>
+        public bool MustChangePassword { get; set; }
+
+        /// <summary>The manager whose team this person is on (their My team tab), if any.</summary>
+        public string? TeamManagerId { get; set; }
+
+        /// <summary>
+        /// When the admin deactivated the account (null = active). Deactivated people can't sign in
+        /// and are hidden from teams and pickers, but their history stays.
+        /// </summary>
+        public DateTime? DeactivatedAt { get; set; }
     }
 }

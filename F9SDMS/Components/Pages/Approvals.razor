@@ -550,7 +550,7 @@
 
         // Leave balances tab: everyone except admins.
         balanceRows = users
-            .Where(u => !admins.Contains(u.Id) && balances.ContainsKey(u.Id))
+            .Where(u => !admins.Contains(u.Id) && u.DeactivatedAt == null && balances.ContainsKey(u.Id))
             .Select(u => PersonOf(u.Id))
             .OrderBy(p => p.Name)
             .Select(p => new BalanceRow(p.Id, p.Name, p.Initials, p.StartDate, balances[p.Id]))

@@ -47,7 +47,17 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString), ServiceLifetime.Scoped);
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.SignIn.RequireConfirmedAccount = true;
+        // Password rules (also shown on the change-password pages): 8+ characters,
+        // upper and lower case and a number. Symbols are allowed but not required.
+        options.Password.RequiredLength = 8;
+        options.Password.RequireDigit = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireNonAlphanumeric = false;
+    })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
@@ -96,6 +106,51 @@ else
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+
+// Calling UseAuthentication ourselves turns off the automatic sign-in setup, so UseAuthorization
+// must be called here too, after it; otherwise pages check permissions before the login cookie
+// is read and everyone is sent back to the sign-in page.
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Someone signed in with a temporary password (new account or admin reset) must choose their own
+// before opening any page. A deactivated account is signed out.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true && HttpMethods.IsGet(context.Request.Method))
+    {
+        var path = context.Request.Path;
+        var skip = path.StartsWithSegments("/Account") || path.StartsWithSegments("/_blazor")
+            || path.StartsWithSegments("/_framework") || path.StartsWithSegments("/login")
+            || Path.HasExtension(path.Value);
+        if (!skip)
+        {
+            var userManager = context.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.GetUserAsync(context.User);
+            var startupLog = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("F9SDMS.SignInCheck");
+            if (user is null)
+            {
+                startupLog.LogWarning("Signed-in request to {Path} but no account matches user id {UserId}.",
+                    path, userManager.GetUserId(context.User));
+            }
+            else if (user.DeactivatedAt is not null)
+            {
+                // Deactivated while signed in: end the login.
+                startupLog.LogWarning("Signing out deactivated account {Email}.", user.Email);
+                await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.SignOutAsync(context, IdentityConstants.ApplicationScheme);
+                context.Response.Redirect("/login");
+                return;
+            }
+            else if (user.MustChangePassword)
+            {
+                context.Response.Redirect("/Account/SetNewPassword");
+                return;
+            }
+        }
+    }
+    await next();
+});
+
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()

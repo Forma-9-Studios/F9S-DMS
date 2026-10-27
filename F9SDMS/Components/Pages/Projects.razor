@@ -442,8 +442,9 @@
 
         var users = await db.Users
             .AsNoTracking()
-            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.DeactivatedAt })
             .ToListAsync();
+        var inactiveIds = users.Where(u => u.DeactivatedAt != null).Select(u => u.Id).ToHashSet();
 
         peopleById = users.ToDictionary(
             u => u.Id,
@@ -454,13 +455,13 @@
                                 where r.Name == "Admin" || r.Name == "Manager"
                                 select ur.UserId).ToListAsync();
         managerCandidates = peopleById.Values
-            .Where(p => managerIds.Contains(p.Id))
+            .Where(p => managerIds.Contains(p.Id) && !inactiveIds.Contains(p.Id))
             .OrderBy(p => p.Name)
             .ToList();
 
         // Admins aren't tracked, so they can't be assigned.
         assignable = peopleById.Values
-            .Where(p => !adminIds.Contains(p.Id))
+            .Where(p => !adminIds.Contains(p.Id) && !inactiveIds.Contains(p.Id))
             .OrderBy(p => p.Name)
             .ToList();
 

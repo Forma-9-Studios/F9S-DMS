@@ -53,7 +53,11 @@
 
             <div class="form-field">
                 <label>Temporary password</label>
-                <InputText @bind-Value="Input.Password" type="text" class="form-input" autocomplete="off" />
+                <div class="reset-row">
+                    <InputText @bind-Value="Input.Password" type="text" class="form-input" autocomplete="off" />
+                    <button type="button" class="generate-btn" @onclick="() => Input.Password = F9SDMS.Services.PasswordHelper.GenerateTemporary()">Generate</button>
+                </div>
+                <span class="optional-label">8+ characters with upper and lower case and a number. They'll choose their own password at first sign-in.</span>
                 <ValidationMessage For="() => Input.Password" class="field-error" />
             </div>
 
@@ -61,6 +65,20 @@
                 <label>Start date <span class="optional-label">(for leave credits)</span></label>
                 <InputDate @bind-Value="Input.StartDate" class="form-input" />
             </div>
+
+            @if (Input.Role == "Employee")
+            {
+                <div class="form-field">
+                    <label>Team manager <span class="optional-label">(optional)</span></label>
+                    <InputSelect @bind-Value="Input.TeamManagerId" class="form-input select-input">
+                        <option value="">No team</option>
+                        @foreach (var m in managers)
+                        {
+                            <option value="@m.Id">@m.Name</option>
+                        }
+                    </InputSelect>
+                </div>
+            }
 
             <div class="form-field">
                 <label>Role</label>
@@ -100,6 +118,19 @@
 
     private static readonly string[] AllowedRoles = { "Employee", "Manager", "Admin" };
 
+    private sealed record ManagerOption(string Id, string Name);
+    private List<ManagerOption> managers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var list = await UserManager.GetUsersInRoleAsync("Manager");
+        managers = list
+            .Where(u => u.DeactivatedAt is null)
+            .Select(u => new ManagerOption(u.Id, $"{u.FirstName} {u.LastName}".Trim() is { Length: > 0 } n ? n : (u.Email ?? "Manager")))
+            .OrderBy(m => m.Name)
+            .ToList();
+    }
+
     private async Task HandleCreate()
     {
         isSubmitting = true;
@@ -121,7 +152,9 @@
                 EmailConfirmed = true,
                 FirstName = Input.FirstName,
                 LastName = Input.LastName,
-                StartDate = Input.StartDate?.Date
+                StartDate = Input.StartDate?.Date,
+                MustChangePassword = true,
+                TeamManagerId = Input.Role != "Employee" || string.IsNullOrEmpty(Input.TeamManagerId) ? null : Input.TeamManagerId
             };
 
             var result = await UserManager.CreateAsync(newUser, Input.Password);
@@ -166,8 +199,10 @@
         public string Email { get; set; } = "";
 
         [Required]
-        [MinLength(6)]
+        [MinLength(8, ErrorMessage = "Use at least 8 characters.")]
         public string Password { get; set; } = "";
+
+        public string? TeamManagerId { get; set; }
 
         public string Role { get; set; } = "Employee";
 

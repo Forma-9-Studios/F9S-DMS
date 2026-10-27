@@ -34,7 +34,9 @@ namespace F9SDMS.Services
         {
             var roleId = await db.Roles.Where(r => r.Name == "Admin").Select(r => r.Id).FirstOrDefaultAsync();
             if (roleId is null) return new();
-            return await db.UserRoles.Where(ur => ur.RoleId == roleId).Select(ur => ur.UserId).ToListAsync();
+            return await db.UserRoles.Where(ur => ur.RoleId == roleId)
+                .Join(db.Users.Where(u => u.DeactivatedAt == null), ur => ur.UserId, u => u.Id, (ur, u) => ur.UserId)
+                .ToListAsync();
         }
 
         /// <summary>Adds a bell notification about a ticket (saved with the caller's SaveChanges).</summary>

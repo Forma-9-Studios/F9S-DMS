@@ -1,0 +1,162 @@
+﻿@page "/admin/teams"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@using F9SDMS.Data
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject ILogger<Teams> Logger
+
+<PageTitle>Teams</PageTitle>
+
+<AppShell Active="teams" Title="Teams" Subtitle="Each employee belongs to one manager. Managers see their team on the dashboard.">
+    <ChildContent>
+        @if (message is not null)
+        {
+            <div class="rq-message @(messageIsError ? "error" : "")" role="status">@message</div>
+        }
+
+        @if (!loaded)
+        {
+            <div class="rq-card rq-empty">Loading teams…</div>
+        }
+        else if (managers.Count == 0)
+        {
+            <div class="rq-card rq-empty">There are no managers yet. Give someone the Manager role in Edit Employee first.</div>
+        }
+        else
+        {
+            <div class="team-columns">
+                @foreach (var manager in managers)
+                {
+                    var team = people.Where(p => p.TeamManagerId == manager.Id).OrderBy(p => p.Name).ToList();
+                    <section class="rq-card team-column">
+                        <div class="team-column-head">
+                            <span class="rq-avatar">@manager.Initials</span>
+                            <span>
+                                <strong>@manager.Name</strong>
+                                <span class="rq-muted">Manager · @team.Count @(team.Count == 1 ? "member" : "members")</span>
+                            </span>
+                        </div>
+                        @foreach (var p in team)
+                        {
+                            @MemberRow(p)
+                        }
+                        @if (team.Count == 0)
+                        {
+                            <div class="rq-muted team-empty">No one yet.</div>
+                        }
+                    </section>
+                }
+
+                <section class="rq-card team-column team-unassigned">
+                    <div class="team-column-head">
+                        <span>
+                            <strong>No team yet</strong>
+                            <span class="rq-muted">Employees not on a manager's team</span>
+                        </span>
+                    </div>
+                    @foreach (var p in people.Where(p => p.TeamManagerId is null).OrderBy(p => p.Name))
+                    {
+                        @MemberRow(p)
+                    }
+                    @if (!people.Any(p => p.TeamManagerId is null))
+                    {
+                        <div class="rq-muted team-empty">Everyone is on a team.</div>
+                    }
+                </section>
+            </div>
+            <p class="rq-hint team-hint">Each manager leads one team of employees. You can also set the team in Add Employee and Edit Employee. Teams don't affect projects: anyone can still be assigned to any project.</p>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private sealed record Person(string Id, string Name, string Initials, string Role, string? TeamManagerId);
+
+    private bool loaded;
+    private List<Person> managers = new();
+    private List<Person> people = new();
+    private string? message;
+    private bool messageIsError;
+
+    // @key keeps each row (and its dropdown) tied to its person. Without it, after a move Blazor
+    // reuses the row for the next person and the dropdown keeps showing the old choice, so picking
+    // that manager again does nothing.
+    private RenderFragment MemberRow(Person p) => @<div class="team-member" @key="p.Id">
+        <span class="team-member-name">
+            <span class="rq-avatar">@p.Initials</span>
+            <strong title="@p.Name">@p.Name</strong>
+        </span>
+        <select class="rq-input team-move" aria-label="Move @p.Name to a team" value="@(p.TeamManagerId ?? "")" @onchange="e => MoveAsync(p, e.Value?.ToString())">
+            <option value="">No team</option>
+            @foreach (var m in managers)
+            {
+                <option value="@m.Id">@m.Name</option>
+            }
+        </select>
+    </div>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var roles = await db.Roles.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Name ?? "");
+        var userRoles = await db.UserRoles.AsNoTracking().ToListAsync();
+        var users = await db.Users.AsNoTracking().Where(u => u.DeactivatedAt == null).ToListAsync();
+
+        string RoleOf(string userId)
+        {
+            var names = userRoles.Where(ur => ur.UserId == userId).Select(ur => roles.TryGetValue(ur.RoleId, out var n) ? n : "").ToList();
+            return names.Contains("Admin") ? "Admin" : names.Contains("Manager") ? "Manager" : "Employee";
+        }
+
+        var all = users.Select(u =>
+        {
+            var first = string.IsNullOrWhiteSpace(u.FirstName) ? (u.Email ?? "?") : u.FirstName;
+            var initials = (first[..1] + (string.IsNullOrWhiteSpace(u.LastName) ? "" : u.LastName[..1])).ToUpper();
+            return new Person(u.Id, $"{first} {u.LastName}".Trim(), initials, RoleOf(u.Id), u.TeamManagerId);
+        }).Where(p => p.Role != "Admin").ToList();
+
+        managers = all.Where(p => p.Role == "Manager").OrderBy(p => p.Name).ToList();
+        var managerIds = managers.Select(m => m.Id).ToHashSet();
+
+        // Teams are made of employees; managers lead them. People whose manager lost the
+        // Manager role show as "No team yet".
+        people = all.Where(p => p.Role == "Employee")
+            .Select(p => p.TeamManagerId is not null && !managerIds.Contains(p.TeamManagerId) ? p with { TeamManagerId = null } : p)
+            .ToList();
+        loaded = true;
+    }
+
+    private async Task MoveAsync(Person person, string? managerId)
+    {
+        managerId = string.IsNullOrEmpty(managerId) ? null : managerId;
+        if (managerId == person.Id) return;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == person.Id);
+            if (user is null) return;
+            user.TeamManagerId = managerId;
+            await db.SaveChangesAsync();
+            await LoadAsync();
+            var target = managerId is null ? "No team" : $"{managers.First(m => m.Id == managerId).Name}'s team";
+            message = $"Moved {person.Name} to {target}.";
+            messageIsError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Moving an employee to a team failed.");
+            message = "Couldn't move them. Please try again.";
+            messageIsError = true;
+        }
+    }
+}

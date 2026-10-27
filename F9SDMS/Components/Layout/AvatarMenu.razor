@@ -1,0 +1,22 @@
+﻿@* The initials in the page header open a small menu: change password and log out.
+   Uses <details> so it works without extra script; the page must contain a #logoutForm form. *@
+
+<details class="avatar-menu">
+    <summary class="avatar" aria-label="Account menu">@Initials</summary>
+    <div class="avatar-menu-panel">
+        <div class="avatar-menu-head">
+            <strong>@Name</strong>
+            <span>@Subtitle</span>
+        </div>
+        <a href="/Account/ChangePassword" data-enhance-nav="false" class="avatar-menu-item">Change password</a>
+        <button type="submit" form="logoutForm" class="avatar-menu-item">Log out</button>
+    </div>
+</details>
+
+@code {
+    [Parameter] public string Initials { get; set; } = "";
+    [Parameter] public string Name { get; set; } = "";
+
+    /// <summary>Email and role, shown under the name.</summary>
+    [Parameter] public string Subtitle { get; set; } = "";
+}

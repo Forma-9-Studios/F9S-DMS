@@ -1,0 +1,292 @@
+﻿@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IAppClock Clock
+@inject ILogger<TeamBoard> Logger
+
+@* Live cards showing what each team member is doing. ManagerId = that manager's team; null = everyone, grouped by manager (admins). *@
+
+<div class="tm">
+    @if (!loaded)
+    {
+        <div class="ov-card ov-empty">Loading team…</div>
+    }
+    else if (members.Count == 0)
+    {
+        <div class="ov-card ov-empty">
+            @(ManagerId is null ? "No employees yet." : "No one is on your team yet. Ask the admin to add people on the Teams page.")
+        </div>
+    }
+    else
+    {
+        <div class="tm-summary">
+            <div class="tm-chips">
+                <span class="tm-chip"><i class="tm-dot tm-work"></i><strong>@members.Count(m => m.StateKey is "work" or "check" or "ot")</strong> working</span>
+                <span class="tm-chip"><i class="tm-dot tm-break"></i><strong>@members.Count(m => m.StateKey is "break" or "meet" or "other")</strong> on break, meeting or other</span>
+                <span class="tm-chip"><i class="tm-dot tm-leave"></i><strong>@members.Count(m => m.StateKey == "leave")</strong> on leave</span>
+                <span class="tm-chip"><i class="tm-dot tm-off"></i><strong>@members.Count(m => m.StateKey == "off")</strong> not clocked in</span>
+            </div>
+            <span class="ov-muted ov-small">Updates every 10 seconds</span>
+        </div>
+
+        @foreach (var group in Groups)
+        {
+            @if (ManagerId is null)
+            {
+                <h3 class="tm-group">@group.Title <span class="ov-muted">· @group.Members.Count</span></h3>
+            }
+            <div class="tm-grid">
+                @foreach (var m in group.Members)
+                {
+                    <button type="button" class="tm-card tm-state-@m.StateKey" @onclick="() => OpenDetail(m)">
+                        <span class="tm-card-top">
+                            <span class="tm-person"><span class="ov-avatar tm-avatar">@m.Initials</span><strong>@m.Name</strong></span>
+                            <span class="tm-badge"><i class="tm-dot"></i>@m.StateLabel</span>
+                        </span>
+                        <span class="tm-what">
+                            @if (!string.IsNullOrEmpty(m.Context))
+                            {
+                                <span class="tm-context">@m.Context</span>
+                            }
+                            <span class="tm-headline">@m.Headline</span>
+                            @if (!string.IsNullOrEmpty(m.Since))
+                            {
+                                <span class="tm-since">@m.Since</span>
+                            }
+                        </span>
+                        @if (m.Today > TimeSpan.Zero)
+                        {
+                            <span class="tm-today">
+                                <span class="tm-today-row"><span>Today</span><span><strong>@Hm(m.Today)</strong> / 8h</span></span>
+                                <span class="tm-today-bar"><span style="width: @Pct(m.Today)%"></span></span>
+                            </span>
+                        }
+                        <span class="tm-foot">
+                            <span>@m.Footer</span>
+                            @if (m.OverdueTasks > 0)
+                            {
+                                <span class="due-chip due-overdue">@m.OverdueTasks overdue</span>
+                            }
+                            else if (m.DueSoonTasks > 0)
+                            {
+                                <span class="due-chip due-tomorrow">@m.DueSoonTasks due soon</span>
+                            }
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+    }
+
+    @if (selected is not null)
+    {
+        <div class="tm-backdrop" @onclick="CloseDetail"></div>
+        <aside class="tm-drawer" role="dialog" aria-label="@selected.Name">
+            <div class="tm-drawer-head">
+                <span class="tm-person">
+                    <span class="ov-avatar tm-avatar-lg">@selected.Initials</span>
+                    <span>
+                        <strong class="tm-drawer-name">@selected.Name</strong>
+                        <span class="tm-drawer-state tm-state-@selected.StateKey"><i class="tm-dot"></i>@selected.StateLabel@(string.IsNullOrEmpty(selected.Since) ? "" : $" · {selected.Since}")</span>
+                    </span>
+                </span>
+                <button type="button" class="rq-close tm-close" aria-label="Close" @onclick="CloseDetail">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                </button>
+            </div>
+
+            <div class="tm-now">
+                <span class="ov-muted ov-small">Now</span>
+                <strong>@(string.IsNullOrEmpty(selected.Context) ? selected.Headline : $"{selected.Context} › {selected.Headline}")</strong>
+            </div>
+
+            @if (detail is null)
+            {
+                <div class="ov-muted">Loading…</div>
+            }
+            else
+            {
+                <div>
+                    <div class="tm-section-title">Today</div>
+                    @if (detail.Timeline.Count == 0)
+                    {
+                        <div class="ov-muted">No project work logged today.</div>
+                    }
+                    else
+                    {
+                        <div class="tm-timeline">
+                            @foreach (var t in detail.Timeline)
+                            {
+                                <div class="tm-tl-row">
+                                    <span class="ov-muted">@t.Start.ToString("h:mm") – @(t.End?.ToString("h:mm tt") ?? "now")</span>
+                                    <i class="tm-tl-dot @(t.Checking ? "checking" : "")"></i>
+                                    <span>@(t.Checking ? "Checking · " : "")@t.What</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="tm-stats">
+                    <div><span>Today</span><strong>@Hm(detail.Today)</strong></div>
+                    <div><span>This week</span><strong>@Hm(detail.Week)</strong></div>
+                    <div><span>Open tasks</span><strong>@detail.Tasks.Count</strong></div>
+                </div>
+
+                <div>
+                    <div class="tm-section-title">Assigned tasks</div>
+                    @if (detail.Tasks.Count == 0)
+                    {
+                        <div class="ov-muted">No open tasks assigned.</div>
+                    }
+                    else
+                    {
+                        @foreach (var t in detail.Tasks)
+                        {
+                            <a href="/projects/@t.ProjectId" class="tm-task">
+                                <span>@t.Title</span>
+                                @if (t.Deadline is DateTime deadline)
+                                {
+                                    <span class="due-chip due-@(TaskReminders.DueKind(deadline, Clock.Now, t.Status))">@TaskReminders.DueLabel(deadline, Clock.Now, t.Status)</span>
+                                }
+                            </a>
+                        }
+                    }
+                </div>
+
+                @if (detail.PendingLeave + detail.PendingOvertime > 0)
+                {
+                    <div class="ov-muted">
+                        Pending:
+                        @if (detail.PendingLeave > 0) { <span>@detail.PendingLeave leave @(detail.PendingLeave == 1 ? "request" : "requests")</span> }
+                        @if (detail.PendingLeave > 0 && detail.PendingOvertime > 0) { <span> · </span> }
+                        @if (detail.PendingOvertime > 0) { <span>@detail.PendingOvertime overtime @(detail.PendingOvertime == 1 ? "request" : "requests")</span> }
+                        · <a href="/approvals">Approvals</a>
+                    </div>
+                }
+            }
+        </aside>
+    }
+</div>
+
+@code {
+    /// <summary>The manager whose team to show, or null for everyone (admins).</summary>
+    [Parameter] public string? ManagerId { get; set; }
+
+    private sealed record Group(string Title, List<TeamMember> Members);
+
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
+
+    private bool loaded;
+    private List<TeamMember> members = new();
+    private Dictionary<string, string> managerNames = new();
+    private HashSet<string> managerIds = new();
+    private TeamMember? selected;
+    private TeamMemberDetail? detail;
+    private System.Threading.Timer? timer;
+    private bool disposed;
+
+    private const string ManagersKey = "__managers";
+
+    // Admins: managers first, then each manager's team, then employees with no team.
+    private IEnumerable<Group> Groups => ManagerId is not null
+        ? new[] { new Group("", members) }
+        : members.GroupBy(m => managerIds.Contains(m.Id) ? ManagersKey : m.ManagerId)
+            .OrderBy(g => g.Key == ManagersKey ? 0 : g.Key == "" ? 2 : 1)
+            .ThenBy(g => managerNames.TryGetValue(g.Key, out var n) ? n : "")
+            .Select(g => new Group(
+                g.Key == ManagersKey ? "Managers" : g.Key == "" ? "No team yet" : $"{(managerNames.TryGetValue(g.Key, out var n) ? n : "Unknown")}'s team",
+                g.ToList()));
+
+    private static string Hm(TimeSpan span) => $"{(int)span.TotalHours}h {span.Minutes:D2}m";
+
+    private static string Pct(TimeSpan span) =>
+        Math.Clamp(span.TotalHours / 8 * 100, 0, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            timer = new System.Threading.Timer(_ => _ = InvokeAsync(RefreshAsync), null, RefreshInterval, RefreshInterval);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (disposed) return;
+        try
+        {
+            await LoadAsync();
+            if (selected is not null)
+            {
+                selected = members.FirstOrDefault(m => m.Id == selected.Id) ?? selected;
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Team board refresh skipped.");
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            members = await TeamStatus.GetAsync(db, ManagerId, Clock.Now);
+            managerIds = (await (from ur in db.UserRoles
+                                 join r in db.Roles on ur.RoleId equals r.Id
+                                 where r.Name == "Manager"
+                                 select ur.UserId).ToListAsync()).ToHashSet();
+            if (ManagerId is null)
+            {
+                managerNames = await ProjectChecking.GetNamesAsync(db);
+            }
+            else
+            {
+                // A manager's team is employees only.
+                members = members.Where(m => !managerIds.Contains(m.Id)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading the team board failed.");
+        }
+        loaded = true;
+    }
+
+    private async Task OpenDetail(TeamMember member)
+    {
+        selected = member;
+        detail = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            detail = await TeamStatus.GetDetailAsync(db, member.Id, Clock.Now);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading team member details failed.");
+        }
+    }
+
+    private void CloseDetail()
+    {
+        selected = null;
+        detail = null;
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        timer?.Dispose();
+    }
+}

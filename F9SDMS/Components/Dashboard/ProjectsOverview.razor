@@ -123,14 +123,56 @@
             </section>
         </div>
 
-        <div class="ov-row ov-row-three">
-            <section class="ov-card">
+        <div class="ov-row ov-row-split">
+            <section class="ov-card ov-card-fill">
                 <div class="ov-card-head">
-                    <h2>Team workload this week</h2>
-                    <div class="ov-legend">
+                    <h2>Hours by project</h2>
+                    <div class="ov-seg" role="tablist" aria-label="Period">
+                        @foreach (var (key, label) in new[] { ("week", "This week"), ("month", "This month"), ("all", "All time") })
+                        {
+                            <button type="button" role="tab" aria-selected="@(projectPeriod == key ? "true" : "false")" class="ov-seg-btn @(projectPeriod == key ? "active" : "")" @onclick="() => projectPeriod = key">@label</button>
+                        }
+                    </div>
+                </div>
+                @{
+                    var periodRows = projectHours
+                        .Select(p => (p.Id, p.Code, p.Sample, Hours: p.For(projectPeriod)))
+                        .Where(p => (p.Hours.Modeling + p.Hours.Checking).TotalMinutes >= 1)
+                        .OrderByDescending(p => p.Hours.Modeling + p.Hours.Checking)
+                        .ToList();
+                    var projectMax = periodRows.Count == 0 ? 1 : Math.Max(periodRows.Max(p => (p.Hours.Modeling + p.Hours.Checking).TotalHours), 0.01);
+                }
+                @if (periodRows.Count == 0)
+                {
+                    <div class="ov-empty">No hours logged on active projects @(projectPeriod == "week" ? "this week" : projectPeriod == "month" ? "this month" : "yet").</div>
+                }
+                else
+                {
+                    @foreach (var p in periodRows)
+                    {
+                        <a href="/projects/@p.Id" class="ov-hp-row" title="Modeling @Hours(p.Hours.Modeling) · Checking @Hours(p.Hours.Checking)">
+                            <span class="ov-proj-name"><span class="ov-code">@p.Code</span><strong>@p.Sample</strong></span>
+                            <span class="ov-bar ov-bar-thick ov-bar-square">
+                                <span class="ov-bg-teal" style="width: @Num(p.Hours.Modeling.TotalHours / projectMax * 100)%"></span>
+                                <span class="ov-bg-purple" style="width: @Num(p.Hours.Checking.TotalHours / projectMax * 100)%"></span>
+                            </span>
+                            <span class="ov-hp-hours">@Hours(p.Hours.Modeling + p.Hours.Checking)</span>
+                        </a>
+                    }
+                }
+                <div class="ov-card-foot">
+                    <span class="ov-legend">
                         <span><i class="ov-sw ov-bg-teal"></i>Modeling</span>
                         <span><i class="ov-sw ov-bg-purple"></i>Checking</span>
-                    </div>
+                    </span>
+                    <span>Total <strong>@Hours(TimeSpan.FromTicks(periodRows.Sum(p => (p.Hours.Modeling + p.Hours.Checking).Ticks)))</strong></span>
+                </div>
+            </section>
+
+            <section class="ov-card ov-card-fill">
+                <div class="ov-card-head">
+                    <h2>Hours logged this week</h2>
+                    <span class="ov-muted ov-small">out of @WeekHours h</span>
                 </div>
                 @if (team.Count == 0)
                 {
@@ -138,54 +180,57 @@
                 }
                 else
                 {
-                    var max = Math.Max(team.Max(t => t.Modeling + t.Checking).TotalHours, 1);
                     @foreach (var t in team)
                     {
-                        <div class="ov-person">
+                        <div class="ov-person" title="Modeling @Hours(t.Modeling) · Checking @Hours(t.Checking)">
                             <span class="ov-person-name">
                                 <span class="ov-avatar">@t.Initials</span>
-                                <span><strong>@t.FirstName</strong><span class="ov-sub" title="@t.Status">@t.Status</span></span>
+                                <strong>@t.FirstName</strong>
                             </span>
                             <span class="ov-bar ov-bar-thick">
-                                <span class="ov-bg-teal" style="width: @Num(t.Modeling.TotalHours / max * 100)%"></span>
-                                <span class="ov-bg-purple" style="width: @Num(t.Checking.TotalHours / max * 100)%"></span>
+                                <span class="ov-bg-teal" style="width: @Num(Math.Min(t.Modeling.TotalHours / WeekHours * 100, 100))%"></span>
+                                <span class="ov-bg-purple" style="width: @Num(Math.Min(t.Checking.TotalHours / WeekHours * 100, 100))%"></span>
                             </span>
-                            <strong class="ov-person-hours">@Hours(t.Modeling + t.Checking)</strong>
+                            <span class="ov-person-hours"><strong>@Hours(t.Modeling + t.Checking)</strong></span>
                         </div>
                     }
-                    <div class="ov-muted ov-small">Second line is what they're working on right now.</div>
                 }
+                <div class="ov-card-foot">
+                    <span class="ov-legend">
+                        <span><i class="ov-sw ov-bg-teal"></i>Modeling</span>
+                        <span><i class="ov-sw ov-bg-purple"></i>Checking</span>
+                    </span>
+                    <span>Since Monday</span>
+                </div>
             </section>
+        </div>
 
-            <section class="ov-card">
+        <div class="ov-row ov-row-split">
+            <section class="ov-card ov-card-fill">
                 <div class="ov-card-head">
                     <h2>Team hours per day</h2>
                     <span class="ov-muted ov-small">last 7 working days</span>
                 </div>
                 @{
-                    var dayMax = Math.Max(Math.Ceiling(days.Select(d => (d.Modeling + d.Checking).TotalHours).DefaultIfEmpty(0).Max() / 10) * 10, 10);
+                    var dayMax = Math.Max(days.Select(d => (d.Modeling + d.Checking).TotalHours).DefaultIfEmpty(0).Max(), 1);
                 }
-                <svg class="ov-chart" viewBox="0 0 360 160" role="img" aria-label="Team hours per day">
-                    @foreach (var line in new[] { 0.0, dayMax / 2, dayMax })
+                <div class="ov-days">
+                    @foreach (var d in days)
                     {
-                        var y = 135 - line / dayMax * 115;
-                        <line x1="30" x2="360" y1="@Num(y)" y2="@Num(y)" class="ov-gridline"></line>
-                        @SvgText(24, y + 4, "end", "ov-axis", line.ToString("0"))
+                        var total = d.Modeling + d.Checking;
+                        <div class="ov-day @(d.Date == Clock.Now.Date ? "today" : "")" title="@d.Date.ToString("ddd MMM d"): Modeling @Hours(d.Modeling) · Checking @Hours(d.Checking)">
+                            <span class="ov-day-val">@(total.TotalMinutes >= 1 ? Hours(total) : "")</span>
+                            <span class="ov-day-track">
+                                <span class="ov-bg-purple" style="height: @Num(d.Checking.TotalHours / dayMax * 100)%"></span>
+                                <span class="ov-bg-teal" style="height: @Num(d.Modeling.TotalHours / dayMax * 100)%"></span>
+                            </span>
+                            <span class="ov-day-label">@d.Date.ToString("ddd")<br />@d.Date.ToString("MMM d")</span>
+                        </div>
                     }
-                    @for (var i = 0; i < days.Count; i++)
-                    {
-                        var d = days[i];
-                        var x = 40 + i * 46;
-                        var hm = d.Modeling.TotalHours / dayMax * 115;
-                        var hc = d.Checking.TotalHours / dayMax * 115;
-                        <rect x="@x" y="@Num(135 - hm)" width="30" height="@Num(hm)" rx="2" class="ov-fill-teal"><title>@d.Date.ToString("ddd MMM d"): Modeling @Hours(d.Modeling)</title></rect>
-                        <rect x="@x" y="@Num(135 - hm - hc)" width="30" height="@Num(hc)" rx="2" class="ov-fill-purple"><title>@d.Date.ToString("ddd MMM d"): Checking @Hours(d.Checking)</title></rect>
-                        @SvgText(x + 15, 152, "middle", "ov-axis", d.Date.ToString("ddd"))
-                    }
-                </svg>
+                </div>
             </section>
 
-            <section class="ov-card">
+            <section class="ov-card ov-card-fill">
                 <h2>Deadlines this week</h2>
                 @if (deadlines.Count == 0)
                 {
@@ -220,6 +265,23 @@
 
     private sealed record Stage(string Name, string Css, int Count);
     private sealed record Person(string FirstName, string Initials, string Status, TimeSpan Modeling, TimeSpan Checking);
+
+    private sealed record ProjectHours(int Id, string Code, string Sample,
+        (TimeSpan Modeling, TimeSpan Checking) Week, (TimeSpan Modeling, TimeSpan Checking) Month, (TimeSpan Modeling, TimeSpan Checking) All)
+    {
+        public (TimeSpan Modeling, TimeSpan Checking) For(string period) => period switch
+        {
+            "month" => Month,
+            "all" => All,
+            _ => Week
+        };
+    }
+
+    /// <summary>A regular work week, the scale for "Hours logged this week".</summary>
+    private const int WeekHours = 40;
+
+    private List<ProjectHours> projectHours = new();
+    private string projectPeriod = "week";
     private sealed record Day(DateTime Date, TimeSpan Modeling, TimeSpan Checking);
     private sealed record Deadline(int ProjectId, string Title, string Kind, string Label, string Assignees, DateTime Date);
 
@@ -253,7 +315,8 @@
 
     private static string Pct(int part, int total) => Num(total == 0 ? 0 : part * 100.0 / total);
     private static string Num(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-    private static string Hours(TimeSpan span) => span.TotalHours >= 10 ? $"{span.TotalHours:0} h" : $"{span.TotalHours:0.#} h";
+    private static string Hours(TimeSpan span) =>
+        span.TotalHours >= 10 ? $"{span.TotalHours:0} h" : span.TotalHours >= 1 ? $"{span.TotalHours:0.#} h" : $"{(int)span.TotalMinutes} min";
 
     protected override async Task OnInitializedAsync()
     {
@@ -432,6 +495,24 @@
                 return new Day(d,
                     onDay.Where(e => !IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)),
                     onDay.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)));
+            }).ToList();
+
+            // Hours per active project: this week, this month and all time.
+            var monthStart = new DateTime(today.Year, today.Month, 1);
+            var projectEntries = await db.ProjectTimeEntries.AsNoTracking()
+                .Where(t => activeIds.Contains(t.ProjectId))
+                .Select(t => new { t.ProjectId, t.WorkType, t.StartTime, t.EndTime })
+                .ToListAsync();
+            (TimeSpan, TimeSpan) Split(IEnumerable<(string WorkType, DateTime StartTime, DateTime? EndTime)> list) =>
+                (list.Where(e => !IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)),
+                 list.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)));
+            projectHours = active.Select(p =>
+            {
+                var mine = projectEntries.Where(e => e.ProjectId == p.Id).Select(e => (e.WorkType, e.StartTime, e.EndTime)).ToList();
+                return new ProjectHours(p.Id, p.Code, p.Sample,
+                    Split(mine.Where(e => e.StartTime >= monday)),
+                    Split(mine.Where(e => e.StartTime >= monthStart)),
+                    Split(mine));
             }).ToList();
 
             var people = await db.Users.AsNoTracking()

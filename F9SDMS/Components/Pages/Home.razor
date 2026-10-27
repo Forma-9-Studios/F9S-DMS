@@ -37,6 +37,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" /></svg>
                 Add Employee
             </a>
+            <a href="/admin/teams" class="navlink">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                Teams
+            </a>
         }
         @if (canViewTeamStatus)
         {
@@ -95,7 +99,7 @@
                     <span class="theme-icon-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg></span>
                     <span class="theme-icon-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg></span>
                 </button>
-                <div class="avatar">@initials</div>
+                <AvatarMenu Initials="@initials" Name="@menuName" Subtitle="@menuSubtitle" />
             </div>
         </div>
 
@@ -103,16 +107,21 @@
         {
             <div class="home-tabs" role="tablist" aria-label="Dashboard view">
                 <button type="button" role="tab" aria-selected="@(homeTab == "overview" ? "true" : "false")" class="home-tab @(homeTab == "overview" ? "active" : "")" @onclick="@(() => homeTab = "overview")">Projects overview</button>
-                <button type="button" role="tab" aria-selected="@(homeTab == "dashboard" ? "true" : "false")" class="home-tab @(homeTab == "dashboard" ? "active" : "")" @onclick="@(() => homeTab = "dashboard")">@(isAdmin ? "Team and employees" : "My day and team")</button>
+                <button type="button" role="tab" aria-selected="@(homeTab == "team" ? "true" : "false")" class="home-tab @(homeTab == "team" ? "active" : "")" @onclick="@(() => homeTab = "team")">@(isAdmin ? "Teams" : "My team")</button>
+                <button type="button" role="tab" aria-selected="@(homeTab == "dashboard" ? "true" : "false")" class="home-tab @(homeTab == "dashboard" ? "active" : "")" @onclick="@(() => homeTab = "dashboard")">@(isAdmin ? "Team status and employees" : "My day")</button>
             </div>
             @if (homeTab == "overview")
             {
                 <ProjectsOverview />
             }
+            else if (homeTab == "team")
+            {
+                <TeamBoard ManagerId="@(isAdmin ? null : currentUserId)" />
+            }
         }
 
         @* Hidden (not removed) on the overview tab so the timer and heartbeat keep running. *@
-        <div class="home-main" hidden="@(canViewTeamStatus && homeTab == "overview")">
+        <div class="home-main" hidden="@(canViewTeamStatus && homeTab != "dashboard")">
 
         @if (!isAdmin)
         {
@@ -468,7 +477,7 @@
 
         @if (canViewTeamStatus)
         {
-            var trackedEmployees = employees.Where(e => e.Role != "Admin").ToList();
+            var trackedEmployees = employees.Where(e => e.Role != "Admin" && e.IsActive).ToList();
             var activeList = trackedEmployees.Where(e => activeEmployeeIds.Contains(e.Id)).ToList();
             var inactiveList = trackedEmployees.Where(e => !activeEmployeeIds.Contains(e.Id)).ToList();
             
@@ -525,7 +534,16 @@
             <div class="employees-section">
                 <div class="employees-header">
                     <h2>Employees</h2>
+                    <div class="ov-seg" role="tablist" aria-label="Show">
+                        <button type="button" role="tab" aria-selected="@(employeeFilter == "active" ? "true" : "false")" class="ov-seg-btn @(employeeFilter == "active" ? "active" : "")" @onclick="@(() => employeeFilter = "active")">Active (@employees.Count(e => e.IsActive))</button>
+                        <button type="button" role="tab" aria-selected="@(employeeFilter == "inactive" ? "true" : "false")" class="ov-seg-btn @(employeeFilter == "inactive" ? "active" : "")" @onclick="@(() => employeeFilter = "inactive")">Deactivated (@employees.Count(e => !e.IsActive))</button>
+                    </div>
                 </div>
+
+                @if (employeeMessage is not null)
+                {
+                    <div class="acct-message" role="status">@employeeMessage</div>
+                }
 
                 <table class="employees-table">
                     <thead>
@@ -537,13 +555,17 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var emp in employees)
+                        @foreach (var emp in employees.Where(e => e.IsActive == (employeeFilter == "active")))
                         {
-                            <tr>
+                            <tr class="@(emp.IsActive ? "" : "acct-inactive-row")">
                                 <td>
                                     <div class="name-cell">
                                         <div class="row-avatar">@GetInitials(emp.FirstName, emp.LastName)</div>
                                         <span>@emp.FirstName @emp.LastName</span>
+                                        @if (emp.DeactivatedAt is DateTime off)
+                                        {
+                                            <span class="acct-badge">Deactivated @off.ToString("MMM d, yyyy")</span>
+                                        }
                                     </div>
                                 </td>
                                 <td>@emp.Email</td>
@@ -552,6 +574,10 @@
                                     <button type="button" class="edit-btn" @onclick="() => OpenEditModal(emp)">Edit</button>
                                 </td>
                             </tr>
+                        }
+                        @if (!employees.Any(e => e.IsActive == (employeeFilter == "active")))
+                        {
+                            <tr><td colspan="4" class="acct-empty">@(employeeFilter == "active" ? "No active employees." : "No deactivated accounts.")</td></tr>
                         }
                     </tbody>
                 </table>
@@ -601,9 +627,86 @@
                         <option value="Admin">Admin</option>
                     </select>
                 </div>
+                @if (editRole == "Employee")
+                {
+                    <div class="form-field">
+                        <label>Team manager</label>
+                        <select class="form-input" @bind="editTeamManagerId">
+                            <option value="">No team</option>
+                            @foreach (var m in employees.Where(e => e.Role == "Manager" && e.IsActive && e.Id != editingEmployee.Id))
+                            {
+                                <option value="@m.Id">@m.FirstName @m.LastName</option>
+                            }
+                        </select>
+                    </div>
+                }
                 <div class="form-field">
-                    <label>New password (leave blank to keep current)</label>
-                    <input class="form-input" @bind="editNewPassword" />
+                    <label>Reset password (leave blank to keep current)</label>
+                    <div class="reset-row">
+                        <input class="form-input" @bind="editNewPassword" placeholder="Temporary password" />
+                        <button type="button" class="modal-btn-cancel" @onclick="() => editNewPassword = F9SDMS.Services.PasswordHelper.GenerateTemporary()">Generate</button>
+                    </div>
+                    <span class="reset-hint">They'll have to choose their own password at next sign-in. Resetting also signs them out everywhere and unlocks the account.</span>
+                </div>
+
+                <div class="acct-section">
+                    <div class="acct-title">Account access</div>
+                    @if (editingEmployee.Id == currentUserId)
+                    {
+                        <span class="reset-hint">You can't deactivate or delete your own account.</span>
+                    }
+                    else if (editingEmployee.DeactivatedAt is null)
+                    {
+                        @if (accountConfirm == "deactivate")
+                        {
+                            <div class="acct-confirm">
+                                <strong>Deactivate @editingEmployee.FirstName?</strong>
+                                <span>They'll be signed out and can't sign in. Their open session ends, pending leave and overtime requests are cancelled, and they're removed from projects, tasks and teams. Their hours and history stay.</span>
+                                <div class="acct-actions">
+                                    <button type="button" class="modal-btn-cancel" @onclick="@(() => accountConfirm = null)">Keep active</button>
+                                    <button type="button" class="acct-btn-danger" disabled="@isSavingEdit" @onclick="DeactivateEmployee">@(isSavingEdit ? "Deactivating..." : "Deactivate")</button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="acct-actions">
+                                <button type="button" class="acct-btn-outline-danger" @onclick="@(() => accountConfirm = "deactivate")">Deactivate account</button>
+                                @if (editHasHistory == false)
+                                {
+                                    <button type="button" class="acct-btn-link" @onclick="@(() => accountConfirm = "delete")">Delete permanently</button>
+                                }
+                            </div>
+                            <span class="reset-hint">For someone who has left. You can reactivate them later.</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="reset-hint">Deactivated on @editingEmployee.DeactivatedAt.Value.ToString("MMM d, yyyy"). They can't sign in.</span>
+                        <div class="acct-actions">
+                            <button type="button" class="modal-btn-cancel" disabled="@isSavingEdit" @onclick="ReactivateEmployee">Reactivate account</button>
+                            @if (editHasHistory == false)
+                            {
+                                <button type="button" class="acct-btn-link" @onclick="@(() => accountConfirm = "delete")">Delete permanently</button>
+                            }
+                        </div>
+                    }
+
+                    @if (accountConfirm == "delete" && editingEmployee.Id != currentUserId)
+                    {
+                        <div class="acct-confirm">
+                            <strong>Delete @editingEmployee.FirstName's account for good?</strong>
+                            <span>This account has no hours, requests or other history, so it can be removed completely. This can't be undone.</span>
+                            <div class="acct-actions">
+                                <button type="button" class="modal-btn-cancel" @onclick="@(() => accountConfirm = null)">Cancel</button>
+                                <button type="button" class="acct-btn-danger" disabled="@isSavingEdit" @onclick="DeleteEmployee">Delete account</button>
+                            </div>
+                        </div>
+                    }
+                    else if (editHasHistory == true && editingEmployee.Id != currentUserId)
+                    {
+                        <span class="reset-hint">This account has history (hours, requests or checks), so it can be deactivated but not deleted.</span>
+                    }
                 </div>
 
                 @if (!string.IsNullOrEmpty(editStatusMessage))
@@ -636,11 +739,13 @@
     private int pendingApprovals;
     private int ticketCount;
 
-    // Managers and admins: "overview" (all projects) or "dashboard" (timer, my projects, team status).
+    // Managers and admins: "overview" (all projects), "team" (My team / Teams) or "dashboard" (timer, my projects, team status).
     private string homeTab = "overview";
     private string elapsed = "00:00:00";
     private string employeeName = "";
     private string initials = "";
+    private string menuName = "";
+    private string menuSubtitle = "";
     private string todayDate = "";
     private bool _autoLogoutStarted;
     private int? currentSessionId;
@@ -753,9 +858,18 @@
     private string editLastName = "";
     private string editRole = "Employee";
     private string editNewPassword = "";
+    private string editTeamManagerId = "";
     private string? editStatusMessage;
     private bool editSucceeded;
     private bool isSavingEdit;
+
+    // Employees list: "active" or "inactive" (deactivated accounts).
+    private string employeeFilter = "active";
+    private string? employeeMessage;
+    // Edit Employee: "deactivate" or "delete" while asking to confirm; null otherwise.
+    private string? accountConfirm;
+    // Whether the account being edited has history (null while checking). Only accounts without it can be deleted.
+    private bool? editHasHistory;
 
     protected override async Task OnInitializedAsync()
     {
@@ -782,6 +896,9 @@
                 currentSubcategoryId = user.CurrentSubcategoryId;
                 currentCheckId = user.CurrentCheckId;
                 currentTaskId = user.CurrentTaskId;
+                menuName = $"{user.FirstName} {user.LastName}".Trim();
+                if (menuName.Length == 0) menuName = user.Email ?? "";
+                menuSubtitle = $"{user.Email} · {(isAdmin ? "Admin" : isManager ? "Manager" : "Employee")}";
 
                 if (!string.IsNullOrWhiteSpace(user.FirstName))
                 {
@@ -1070,7 +1187,7 @@
 
             var allUsers = await db.Users
                 .AsNoTracking()
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId })
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId, u.DeactivatedAt })
                 .ToListAsync();
 
             var userRoles = await (from ur in db.UserRoles
@@ -1091,7 +1208,8 @@
                 Email = u.Email ?? "",
                 Role = rolesByUser.TryGetValue(u.Id, out var role) && role is not null ? role : "Employee",
                 Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus,
-                CurrentProjectId = u.CurrentProjectId
+                CurrentProjectId = u.CurrentProjectId,
+                DeactivatedAt = u.DeactivatedAt
             }).ToList();
 
             var activeIds = await db.AttendanceSessions
@@ -1375,14 +1493,157 @@
         }
     }
 
-    private void OpenEditModal(EmployeeRow emp)
+    private async Task OpenEditModal(EmployeeRow emp)
     {
         editingEmployee = UserManager.Users.FirstOrDefault(u => u.Id == emp.Id);
+        if (editingEmployee is not null)
+        {
+            await CircuitDb.Entry(editingEmployee).ReloadAsync();
+        }
         editFirstName = emp.FirstName;
         editLastName = emp.LastName;
         editRole = emp.Role;
+        editTeamManagerId = editingEmployee?.TeamManagerId ?? "";
         editNewPassword = "";
         editStatusMessage = null;
+        employeeMessage = null;
+        accountConfirm = null;
+        editHasHistory = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            editHasHistory = await F9SDMS.Services.EmployeeAccounts.HasHistoryAsync(db, emp.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Checking an employee's history failed.");
+            editHasHistory = true;
+        }
+    }
+
+    /// <summary>True when the account is the only active Admin (it can't be deactivated or deleted).</summary>
+    private async Task<bool> IsLastActiveAdminAsync(ApplicationUser user)
+    {
+        if (!await UserManager.IsInRoleAsync(user, "Admin")) return false;
+        var admins = await UserManager.GetUsersInRoleAsync("Admin");
+        return admins.Count(a => a.DeactivatedAt is null && a.Id != user.Id) == 0;
+    }
+
+    private async Task DeactivateEmployee()
+    {
+        if (editingEmployee is null || !isAdmin || editingEmployee.Id == currentUserId) return;
+        isSavingEdit = true;
+        editStatusMessage = null;
+        try
+        {
+            if (await IsLastActiveAdminAsync(editingEmployee))
+            {
+                ShowEditError("This is the only active Admin account. Make someone else an Admin first.");
+                return;
+            }
+
+            var name = $"{editingEmployee.FirstName} {editingEmployee.LastName}".Trim();
+            await using (var db = await DbFactory.CreateDbContextAsync())
+            {
+                await F9SDMS.Services.EmployeeAccounts.DeactivateAsync(db, editingEmployee.Id, currentUserId, Clock.Now);
+            }
+
+            // Signs them out of every browser within a minute.
+            await CircuitDb.Entry(editingEmployee).ReloadAsync();
+            await UserManager.UpdateSecurityStampAsync(editingEmployee);
+
+            await LoadEmployees();
+            editingEmployee = null;
+            employeeMessage = $"{name} was deactivated. You'll find them under Deactivated.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Deactivating an employee failed.");
+            ShowEditError("Couldn't deactivate the account. Please try again.");
+        }
+        finally
+        {
+            isSavingEdit = false;
+        }
+    }
+
+    private async Task ReactivateEmployee()
+    {
+        if (editingEmployee is null || !isAdmin) return;
+        isSavingEdit = true;
+        editStatusMessage = null;
+        try
+        {
+            var name = $"{editingEmployee.FirstName} {editingEmployee.LastName}".Trim();
+            await using (var db = await DbFactory.CreateDbContextAsync())
+            {
+                await F9SDMS.Services.EmployeeAccounts.ReactivateAsync(db, editingEmployee.Id);
+            }
+            await CircuitDb.Entry(editingEmployee).ReloadAsync();
+            await LoadEmployees();
+            editingEmployee = null;
+            employeeFilter = "active";
+            employeeMessage = $"{name} can sign in again. Add them back to their team and projects.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Reactivating an employee failed.");
+            ShowEditError("Couldn't reactivate the account. Please try again.");
+        }
+        finally
+        {
+            isSavingEdit = false;
+        }
+    }
+
+    private async Task DeleteEmployee()
+    {
+        if (editingEmployee is null || !isAdmin || editingEmployee.Id == currentUserId) return;
+        isSavingEdit = true;
+        editStatusMessage = null;
+        try
+        {
+            if (await IsLastActiveAdminAsync(editingEmployee))
+            {
+                ShowEditError("This is the only active Admin account. Make someone else an Admin first.");
+                return;
+            }
+
+            var name = $"{editingEmployee.FirstName} {editingEmployee.LastName}".Trim();
+            await using (var db = await DbFactory.CreateDbContextAsync())
+            {
+                // Checked again in case they started using the account since the dialog opened.
+                if (await F9SDMS.Services.EmployeeAccounts.HasHistoryAsync(db, editingEmployee.Id))
+                {
+                    editHasHistory = true;
+                    accountConfirm = null;
+                    ShowEditError("This account has history now, so it can only be deactivated.");
+                    return;
+                }
+                await F9SDMS.Services.EmployeeAccounts.RemoveLinksAsync(db, editingEmployee.Id);
+            }
+
+            await CircuitDb.Entry(editingEmployee).ReloadAsync();
+            var result = await UserManager.DeleteAsync(editingEmployee);
+            if (!result.Succeeded)
+            {
+                ShowEditError(DescribeErrors(result));
+                return;
+            }
+
+            await LoadEmployees();
+            editingEmployee = null;
+            employeeMessage = $"{name}'s account was deleted.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Deleting an employee failed.");
+            ShowEditError("Couldn't delete the account. Please try again.");
+        }
+        finally
+        {
+            isSavingEdit = false;
+        }
     }
 
     private void CloseEditModal()
@@ -1428,6 +1689,9 @@
 
             editingEmployee.FirstName = editFirstName;
             editingEmployee.LastName = editLastName;
+            editingEmployee.TeamManagerId = editRole != "Employee" || string.IsNullOrEmpty(editTeamManagerId) || editTeamManagerId == editingEmployee.Id
+                ? null
+                : editTeamManagerId;
 
             var updateResult = await UserManager.UpdateAsync(editingEmployee);
             if (!updateResult.Succeeded)
@@ -1481,6 +1745,13 @@
                     ShowEditError(DescribeErrors(resetResult));
                     return;
                 }
+
+                // A temporary password: they choose their own at next sign-in. The reset already
+                // changed the security stamp (signed out everywhere); also lift any lockout.
+                editingEmployee.MustChangePassword = true;
+                await UserManager.UpdateAsync(editingEmployee);
+                await UserManager.SetLockoutEndDateAsync(editingEmployee, null);
+                await UserManager.ResetAccessFailedCountAsync(editingEmployee);
             }
 
             await LoadEmployees();
@@ -1548,6 +1819,8 @@
         public string Role { get; set; } = "";
         public string Status { get; set; } = "Available";
         public int? CurrentProjectId { get; set; }
+        public DateTime? DeactivatedAt { get; set; }
+        public bool IsActive => DeactivatedAt is null;
     }
 
     private class MyProject
