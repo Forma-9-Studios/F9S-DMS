@@ -1,0 +1,82 @@
+﻿@using F9SDMS.Services
+
+@* Optional attachment for a ticket: a screenshot or file up to 10 MB. *@
+
+<div class="tk-attach">
+    @* The file input stays on the page while a file is chosen: the upload is read from it
+       when the ticket is sent, and removing it would cancel the upload. *@
+    <label class="tk-attach-drop @(Disabled ? "disabled" : "")" hidden="@(Value is not null)">
+        <InputFile @key="inputKey" OnChange="OnChange" accept="@TicketFileStore.Accept" disabled="@Disabled" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+        <span>@Label <span class="tk-attach-hint">(optional, up to 10 MB)</span></span>
+    </label>
+    @if (Value is not null)
+    {
+        <div class="tk-attach-file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+            <span class="tk-attach-name">@Value.Name</span>
+            <span class="tk-attach-hint">@Tickets.FormatSize(Value.Size)</span>
+            <button type="button" class="rq-link-btn" @onclick="Clear" disabled="@Disabled">Remove</button>
+        </div>
+    }
+    @if (error is not null)
+    {
+        <div class="rq-error" role="alert">@error</div>
+    }
+</div>
+
+@code {
+    [Parameter] public Microsoft.AspNetCore.Components.Forms.IBrowserFile? Value { get; set; }
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Forms.IBrowserFile?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string Label { get; set; } = "Attach a screenshot or file";
+
+    private string? error;
+    private int inputKey;
+    private bool hadFile;
+
+    protected override void OnParametersSet()
+    {
+        // The page cleared the file (e.g. after sending): reset the input so a new pick works.
+        if (hadFile && Value is null)
+        {
+            inputKey++;
+        }
+        hadFile = Value is not null;
+    }
+
+    private async Task OnChange(InputFileChangeEventArgs e)
+    {
+        error = null;
+        var file = e.File;
+
+        // Invalid picks reset the input; a valid one keeps it (the upload reads from it later).
+        if (!TicketFileStore.IsAllowed(file.Name))
+        {
+            error = "Attach an image, PDF, text, ZIP, Word or Excel file.";
+            inputKey++;
+            return;
+        }
+        if (file.Size == 0)
+        {
+            error = "That file is empty.";
+            inputKey++;
+            return;
+        }
+        if (file.Size > TicketFileStore.MaxBytes)
+        {
+            error = $"That file is {Tickets.FormatSize(file.Size)}. The limit is 10 MB.";
+            inputKey++;
+            return;
+        }
+
+        await ValueChanged.InvokeAsync(file);
+    }
+
+    private async Task Clear()
+    {
+        error = null;
+        inputKey++;
+        await ValueChanged.InvokeAsync(null);
+    }
+}

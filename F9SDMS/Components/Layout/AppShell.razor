@@ -51,6 +51,14 @@
                 }
             </a>
         }
+        <a href="/it-support" class="navlink @(Active == "it" ? "active" : "")">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z" /><line x1="13" y1="5" x2="13" y2="19" stroke-dasharray="2 2" /></svg>
+            IT Support
+            @if (ticketCount > 0)
+            {
+                <span class="nav-badge">@ticketCount</span>
+            }
+        </a>
 
         <div class="sidebar-spacer"></div>
 
@@ -104,7 +112,7 @@
 </div>
 
 @code {
-    /// <summary>Which sidebar link is highlighted: "dashboard", "projects", "requests" or "approvals".</summary>
+    /// <summary>Which sidebar link is highlighted: "dashboard", "projects", "requests", "approvals" or "it".</summary>
     [Parameter] public string Active { get; set; } = "";
 
     /// <summary>
@@ -114,6 +122,7 @@
     [Parameter] public int? PendingCount { get; set; }
 
     private int loadedPending;
+    private int ticketCount;
     private int PendingApprovals => PendingCount ?? loadedPending;
 
     [Parameter] public string Title { get; set; } = "";
@@ -138,10 +147,13 @@
         isManager = authState.User.IsInRole("Manager");
 
         var userId = UserManager.GetUserId(authState.User);
-        if ((isAdmin || isManager) && PendingCount is null)
+        await using (var db = await DbFactory.CreateDbContextAsync())
         {
-            await using var db = await DbFactory.CreateDbContextAsync();
-            loadedPending = await F9SDMS.Services.OvertimeRules.CountPendingApprovalsAsync(db, userId);
+            if ((isAdmin || isManager) && PendingCount is null)
+            {
+                loadedPending = await F9SDMS.Services.OvertimeRules.CountPendingApprovalsAsync(db, userId);
+            }
+            ticketCount = await F9SDMS.Services.Tickets.MenuCountAsync(db, userId, isAdmin);
         }
 
         if (userId is not null)

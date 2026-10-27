@@ -22,6 +22,7 @@ builder.Services.AddHostedService<StaleSessionCleanupService>();
 builder.Services.AddHostedService<DeadlineReminderService>();
 builder.Services.AddSingleton<IAppClock, AppClock>();
 builder.Services.AddSingleton<CheckFileStore>();
+builder.Services.AddSingleton<TicketFileStore>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -161,6 +162,31 @@ app.MapGet("/checks/review/{id:int}", async (int id, HttpContext http, Applicati
     disposition.SetHttpFileName(review.FileName ?? "file.pdf");
     http.Response.Headers.ContentDisposition = disposition.ToString();
     return Results.File(path, "application/pdf", enableRangeProcessing: true);
+}).RequireAuthorization();
+
+// Files attached to IT tickets: the ticket's employee and admins can open them; internal notes are admin-only.
+app.MapGet("/tickets/file/{id:int}", async (int id, HttpContext http, ApplicationDbContext db, TicketFileStore store) =>
+{
+    var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userId is null) return Results.Unauthorized();
+
+    var message = await db.TicketMessages.AsNoTracking().Include(m => m.Ticket).FirstOrDefaultAsync(m => m.Id == id);
+    if (message?.Ticket is null) return Results.NotFound();
+
+    var isAdmin = http.User.IsInRole("Admin");
+    if (!isAdmin && (message.Ticket.EmployeeId != userId || message.IsInternal)) return Results.Forbid();
+
+    var path = store.GetPath(message.AttachmentStoredName);
+    if (path is null) return Results.NotFound();
+
+    var fileName = message.AttachmentFileName ?? "attachment";
+    var contentType = TicketFileStore.ContentTypeOf(fileName);
+    var inline = contentType.StartsWith("image/") || contentType == "application/pdf";
+    var disposition = new ContentDispositionHeaderValue(inline ? "inline" : "attachment");
+    disposition.SetHttpFileName(fileName);
+    http.Response.Headers.ContentDisposition = disposition.ToString();
+    http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    return Results.File(path, contentType, enableRangeProcessing: true);
 }).RequireAuthorization();
 
 app.Run();

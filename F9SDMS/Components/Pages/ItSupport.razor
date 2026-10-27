@@ -1,0 +1,456 @@
+﻿@page "/it-support"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize]
+@implements IDisposable
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject TicketFileStore Files
+@inject IAppClock Clock
+@inject ILogger<ItSupport> Logger
+
+<PageTitle>@(isAdmin ? "IT tickets" : "IT Support")</PageTitle>
+
+<AppShell Active="it" Title="@(isAdmin ? "IT tickets" : "IT Support")"
+          Subtitle="@(isAdmin ? "Everything employees reported. Urgent first, then oldest." : "Report a problem with your computer, software, network or access.")">
+    <HeaderActions>
+        @if (!isAdmin)
+        {
+            <button type="button" class="rq-btn rq-btn-leave" @onclick="OpenNew">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                New ticket
+            </button>
+        }
+    </HeaderActions>
+    <ChildContent>
+        @if (message is not null)
+        {
+            <div class="rq-message @(messageIsError ? "error" : "")" role="status">@message</div>
+        }
+
+        @if (isAdmin)
+        {
+            <div class="rq-tiles">
+                <div class="rq-tile">
+                    <div class="rq-tile-label">Open</div>
+                    <div class="rq-tile-value pending">@rows.Count(r => r.Status == TicketOptions.StatusOpen)</div>
+                    <div class="rq-tile-sub">@(UrgentOpen > 0 ? $"{UrgentOpen} urgent" : "nothing urgent")</div>
+                </div>
+                <div class="rq-tile">
+                    <div class="rq-tile-label">In progress</div>
+                    <div class="rq-tile-value vacation">@rows.Count(r => r.Status == TicketOptions.StatusInProgress)</div>
+                    <div class="rq-tile-sub">&nbsp;</div>
+                </div>
+                <div class="rq-tile">
+                    <div class="rq-tile-label">Waiting on employee</div>
+                    <div class="rq-tile-value overtime">@rows.Count(r => r.Status == TicketOptions.StatusWaiting)</div>
+                    <div class="rq-tile-sub">&nbsp;</div>
+                </div>
+                <div class="rq-tile">
+                    <div class="rq-tile-label">Resolved this week</div>
+                    <div class="rq-tile-value sick">@resolvedThisWeek</div>
+                    <div class="rq-tile-sub">@(avgResolve is TimeSpan avg ? $"avg. {FormatSpan(avg)} to resolve" : " ")</div>
+                </div>
+            </div>
+        }
+        else if (rows.Any(r => r.Status == TicketOptions.StatusWaiting))
+        {
+            var waiting = rows.First(r => r.Status == TicketOptions.StatusWaiting);
+            <a href="/it-support/@waiting.Id" class="rq-unfiled tk-waiting-banner">
+                <span>IT replied on @waiting.Code and is waiting for your answer.</span>
+                <strong>Open ›</strong>
+            </a>
+        }
+
+        <section class="rq-card">
+            <div class="rq-card-toolbar">
+                <div class="rq-tabs" role="tablist" aria-label="Show">
+                    @foreach (var tab in new[] { "Active", "Resolved", "All" })
+                    {
+                        <button type="button" role="tab" aria-selected="@(filter == tab ? "true" : "false")" class="rq-tab @(filter == tab ? "active" : "")" @onclick="() => filter = tab">
+                            @tab
+                            @if (tab == "Active" && rows.Any(r => TicketOptions.IsActive(r.Status)))
+                            {
+                                <span class="rq-tab-count">@rows.Count(r => TicketOptions.IsActive(r.Status))</span>
+                            }
+                        </button>
+                    }
+                </div>
+                <div class="tk-filters">
+                    @if (isAdmin)
+                    {
+                        <select class="rq-input tk-filter" aria-label="Category" @bind="categoryFilter">
+                            <option value="">All categories</option>
+                            @foreach (var c in TicketOptions.Categories)
+                            {
+                                <option value="@c">@c</option>
+                            }
+                        </select>
+                    }
+                    <input type="search" class="rq-input tk-filter" placeholder="Search tickets…" aria-label="Search tickets" @bind="search" @bind:event="oninput" />
+                </div>
+            </div>
+
+            <div class="rq-table-scroll">
+                <table class="rq-table tk-table">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            @if (isAdmin)
+                            {
+                                <th>From</th>
+                            }
+                            <th>Subject</th>
+                            <th>Category</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th>Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Visible)
+                        {
+                            <tr class="tk-row @(!isAdmin && row.Status == TicketOptions.StatusWaiting ? "tk-row-waiting" : "")" @onclick="() => Navigation.NavigateTo(row.Link)">
+                                <td class="rq-muted rq-strong rq-nowrap">@row.Code</td>
+                                @if (isAdmin)
+                                {
+                                    <td><span class="rq-person"><span class="rq-avatar">@row.Initials</span><span class="rq-strong rq-nowrap">@row.Name</span></span></td>
+                                }
+                                <td><a href="@row.Link" class="tk-subject" @onclick:stopPropagation="true">@row.Subject</a></td>
+                                <td class="rq-reason rq-nowrap">@row.Category</td>
+                                <td><span class="tk-pill tk-pri-@TicketOptions.Css(row.Priority)">@row.Priority</span></td>
+                                <td><span class="tk-pill tk-st-@TicketOptions.Css(row.Status)">@StatusLabel(row.Status)</span></td>
+                                <td class="rq-muted rq-nowrap">@Tickets.Ago(row.UpdatedAt, Clock.Now)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (!loaded)
+            {
+                <div class="rq-empty">Loading tickets…</div>
+            }
+            else if (!Visible.Any())
+            {
+                <div class="rq-empty">@(rows.Count == 0 ? (isAdmin ? "No tickets yet." : "No tickets yet. Use New ticket if something isn't working.") : "Nothing matches.")</div>
+            }
+        </section>
+
+        @if (showNew)
+        {
+            <div class="rq-overlay">
+                <div class="rq-modal" role="dialog" aria-labelledby="newTicketTitle">
+                    <div class="rq-modal-header leave">
+                        <h2 id="newTicketTitle">New IT ticket</h2>
+                        <button type="button" class="rq-close" aria-label="Close" @onclick="() => showNew = false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                        </button>
+                    </div>
+                    <div class="rq-modal-body">
+                        <div class="rq-field">
+                            <span class="rq-label">Category</span>
+                            <div class="rq-chips">
+                                @foreach (var c in TicketOptions.Categories)
+                                {
+                                    <button type="button" class="rq-chip @(newCategory == c ? "active" : "")" aria-pressed="@(newCategory == c ? "true" : "false")" @onclick="() => newCategory = c">@c</button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="rq-field">
+                            <span class="rq-label">How urgent is it?</span>
+                            <div class="tk-priorities">
+                                @foreach (var p in TicketOptions.Priorities)
+                                {
+                                    <button type="button" class="tk-priority tk-pri-@TicketOptions.Css(p) @(newPriority == p ? "active" : "")" aria-pressed="@(newPriority == p ? "true" : "false")" @onclick="() => newPriority = p">@p</button>
+                                }
+                            </div>
+                            <span class="rq-hint">High: I can work but it's slowing me down a lot. Urgent: I can't work at all.</span>
+                        </div>
+
+                        <div class="rq-field">
+                            <label for="tkSubject">Subject <span class="rq-req">*</span></label>
+                            <input id="tkSubject" class="rq-input" maxlength="200" @bind="newSubject" placeholder="e.g. Revit crashes when syncing with central" />
+                        </div>
+
+                        <div class="rq-field">
+                            <label for="tkBody">What happened? <span class="rq-req">*</span></label>
+                            <textarea id="tkBody" class="rq-input" rows="4" maxlength="4000" @bind="newBody" placeholder="What were you doing, what did you expect, and what happened instead?"></textarea>
+                        </div>
+
+                        <TicketAttachPicker @bind-Value="newFile" Disabled="@isSaving" />
+
+                        @if (formError is not null)
+                        {
+                            <div class="rq-error">@formError</div>
+                        }
+                    </div>
+                    <div class="rq-modal-footer">
+                        <button type="button" class="rq-btn-cancel" @onclick="() => showNew = false">Cancel</button>
+                        <button type="button" class="rq-btn rq-btn-leave" @onclick="SubmitNew" disabled="@isSaving">@(isSaving ? "Submitting…" : "Submit ticket")</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private sealed record Row(int Id, string Code, string EmployeeId, string Name, string Initials, string Subject, string Category,
+        string Priority, string Status, DateTime CreatedAt, DateTime UpdatedAt)
+    {
+        public string Link => $"/it-support/{Id}";
+    }
+
+    private string? userId;
+    private bool isAdmin;
+    private bool loaded;
+    private bool isSaving;
+    private List<Row> rows = new();
+    private string filter = "Active";
+    private string categoryFilter = "";
+    private string search = "";
+    private int resolvedThisWeek;
+    private TimeSpan? avgResolve;
+
+    private bool showNew;
+    private string newCategory = "Software";
+    private string newPriority = TicketOptions.PriorityNormal;
+    private string newSubject = "";
+    private string newBody = "";
+    private Microsoft.AspNetCore.Components.Forms.IBrowserFile? newFile;
+    private string? formError;
+
+    private string? message;
+    private bool messageIsError;
+    private CancellationTokenSource? messageCts;
+
+    private int UrgentOpen => rows.Count(r => r.Status == TicketOptions.StatusOpen && r.Priority == TicketOptions.PriorityUrgent);
+
+    private IEnumerable<Row> Visible
+    {
+        get
+        {
+            IEnumerable<Row> list = filter switch
+            {
+                "Active" => rows.Where(r => TicketOptions.IsActive(r.Status)),
+                "Resolved" => rows.Where(r => !TicketOptions.IsActive(r.Status)),
+                _ => rows
+            };
+            if (categoryFilter != "") list = list.Where(r => r.Category == categoryFilter);
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var q = search.Trim();
+                list = list.Where(r => r.Subject.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || r.Code.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || r.Name.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            // Admins: urgent first, then oldest. Employees: newest first.
+            return isAdmin && filter == "Active"
+                ? list.OrderByDescending(r => r.Status == TicketOptions.StatusOpen || r.Status == TicketOptions.StatusInProgress)
+                      .ThenByDescending(r => TicketOptions.PriorityRank(r.Priority))
+                      .ThenBy(r => r.CreatedAt)
+                : list.OrderByDescending(r => r.UpdatedAt);
+        }
+    }
+
+    private string StatusLabel(string status) =>
+        status == TicketOptions.StatusWaiting ? (isAdmin ? "Waiting on employee" : "Waiting on you") : status;
+
+    private static string FormatSpan(TimeSpan span) =>
+        span.TotalHours >= 24 ? $"{span.TotalDays:0.#} days" : span.TotalHours >= 1 ? $"{(int)span.TotalHours} h {span.Minutes} m" : $"{span.Minutes} m";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = UserManager.GetUserId(authState.User);
+        isAdmin = authState.User.IsInRole("Admin");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (userId is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var now = Clock.Now;
+        await Tickets.AutoCloseAsync(db, now);
+
+        var query = db.Tickets.AsNoTracking();
+        if (!isAdmin)
+        {
+            query = query.Where(t => t.EmployeeId == userId);
+        }
+        var tickets = await query.ToListAsync();
+
+        var ids = tickets.Select(t => t.EmployeeId).Distinct().ToList();
+        var people = await db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email })
+            .ToListAsync();
+        var byId = people.ToDictionary(p => p.Id);
+
+        rows = tickets.Select(t =>
+        {
+            var name = "Former employee";
+            var initials = "?";
+            if (byId.TryGetValue(t.EmployeeId, out var p))
+            {
+                var first = string.IsNullOrWhiteSpace(p.FirstName) ? (p.Email ?? "?") : p.FirstName;
+                name = $"{first} {p.LastName}".Trim();
+                initials = (first[..1] + (string.IsNullOrWhiteSpace(p.LastName) ? "" : p.LastName[..1])).ToUpper();
+            }
+            return new Row(t.Id, t.Code, t.EmployeeId, name, initials, t.Subject, t.Category, t.Priority, t.Status, t.CreatedAt, t.UpdatedAt);
+        }).ToList();
+
+        if (isAdmin)
+        {
+            var weekStart = now.Date.AddDays(-(((int)now.DayOfWeek + 6) % 7));
+            var resolved = tickets.Where(t => t.ResolvedAt != null && t.ResolvedAt >= weekStart).ToList();
+            resolvedThisWeek = resolved.Count;
+            avgResolve = resolved.Count == 0
+                ? null
+                : TimeSpan.FromMinutes(resolved.Average(t => (t.ResolvedAt!.Value - t.CreatedAt).TotalMinutes));
+        }
+
+        loaded = true;
+    }
+
+    private void OpenNew()
+    {
+        newCategory = "Software";
+        newPriority = TicketOptions.PriorityNormal;
+        newSubject = "";
+        newBody = "";
+        newFile = null;
+        formError = null;
+        showNew = true;
+    }
+
+    private async Task SubmitNew()
+    {
+        if (userId is null || isSaving) return;
+        formError = null;
+
+        if (string.IsNullOrWhiteSpace(newSubject))
+        {
+            formError = "Please add a subject.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newBody))
+        {
+            formError = "Please describe what happened.";
+            return;
+        }
+
+        isSaving = true;
+        string? storedName = null;
+        try
+        {
+            long? size = null;
+            if (newFile is not null)
+            {
+                await using var stream = newFile.OpenReadStream(TicketFileStore.MaxBytes);
+                var saved = await Files.SaveAsync(stream, newFile.Name);
+                storedName = saved.StoredName;
+                size = saved.Size;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var now = Clock.Now;
+            var ticket = new Ticket
+            {
+                EmployeeId = userId,
+                Category = TicketOptions.Categories.Contains(newCategory) ? newCategory : "Other",
+                Priority = TicketOptions.Priorities.Contains(newPriority) ? newPriority : TicketOptions.PriorityNormal,
+                Subject = newSubject.Trim(),
+                Status = TicketOptions.StatusOpen,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            ticket.Messages.Add(new TicketMessage
+            {
+                AuthorId = userId,
+                Body = newBody.Trim(),
+                CreatedAt = now,
+                AttachmentStoredName = storedName,
+                AttachmentFileName = storedName is null ? null : Path.GetFileName(newFile!.Name),
+                AttachmentSize = size
+            });
+            db.Tickets.Add(ticket);
+            await db.SaveChangesAsync();
+
+            // Tell the admins.
+            var me = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.FirstName).FirstOrDefaultAsync();
+            foreach (var adminId in (await Tickets.AdminIdsAsync(db)).Where(id => id != userId))
+            {
+                Tickets.Notify(db, adminId, Notification.KindTicketNew, ticket,
+                    $"New {ticket.Priority.ToLower()} ticket from {(string.IsNullOrWhiteSpace(me) ? "an employee" : me)} · {ticket.Category}", now);
+            }
+            await db.SaveChangesAsync();
+
+            showNew = false;
+            filter = "Active";
+            await LoadAsync();
+            ShowMessage($"Ticket {ticket.Code} was sent to IT. You'll get a notification when they reply.");
+        }
+        catch (InvalidDataException ex)
+        {
+            Files.Delete(storedName);
+            formError = ex.Message;
+        }
+        catch (IOException ex)
+        {
+            Files.Delete(storedName);
+            Logger.LogWarning(ex, "Ticket attachment upload failed.");
+            formError = "The file couldn't be uploaded. Try again, or submit without it.";
+        }
+        catch (Exception ex)
+        {
+            Files.Delete(storedName);
+            Logger.LogError(ex, "Submitting a ticket failed.");
+            formError = "Something went wrong while sending the ticket. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowMessage(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+        messageCts?.Cancel();
+        messageCts = new CancellationTokenSource();
+        var token = messageCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(isError ? 10 : 6), token);
+                await InvokeAsync(() =>
+                {
+                    message = null;
+                    StateHasChanged();
+                });
+            }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        });
+    }
+
+    public void Dispose()
+    {
+        messageCts?.Cancel();
+        messageCts?.Dispose();
+    }
+}

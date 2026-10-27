@@ -19,6 +19,8 @@ namespace F9SDMS.Data
         public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
         public DbSet<TaskAssignee> TaskAssignees => Set<TaskAssignee>();
         public DbSet<Notification> Notifications => Set<Notification>();
+        public DbSet<Ticket> Tickets => Set<Ticket>();
+        public DbSet<TicketMessage> TicketMessages => Set<TicketMessage>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -111,6 +113,15 @@ namespace F9SDMS.Data
             builder.Entity<TaskAssignee>().HasIndex(a => a.EmployeeId);
             builder.Entity<Notification>().HasIndex(n => new { n.UserId, n.ReadAt });
             builder.Entity<Notification>().HasIndex(n => n.TaskId);
+
+            // IT support tickets.
+            builder.Entity<Ticket>().HasIndex(t => new { t.EmployeeId, t.Status });
+            builder.Entity<Ticket>().HasIndex(t => t.Status);
+            builder.Entity<TicketMessage>()
+                .HasOne(m => m.Ticket)
+                .WithMany(t => t.Messages)
+                .HasForeignKey(m => m.TicketId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // The company's leave policy: one row, created with the defaults.
             builder.Entity<LeavePolicy>().HasData(new LeavePolicy

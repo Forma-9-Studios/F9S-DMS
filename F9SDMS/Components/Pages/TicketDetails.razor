@@ -1,0 +1,506 @@
+﻿@page "/it-support/{TicketId:int}"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [Authorize]
+@implements IDisposable
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject TicketFileStore Files
+@inject IAppClock Clock
+@inject ILogger<TicketDetails> Logger
+
+<PageTitle>@(ticket is null ? "Ticket" : $"{ticket.Code} · {ticket.Subject}")</PageTitle>
+
+<AppShell Active="it"
+          Title="@(ticket is null ? "Ticket" : $"{ticket.Code} · {ticket.Subject}")"
+          Subtitle="@(ticket is null ? null : $"{employeeName} · {ticket.Category} · opened {ticket.CreatedAt:MMM d, h:mm tt}")">
+    <ChildContent>
+        <a href="/it-support" class="back-link tk-back">‹ Back to tickets</a>
+
+        @if (message is not null)
+        {
+            <div class="rq-message @(messageIsError ? "error" : "")" role="status">@message</div>
+        }
+
+        @if (!loaded)
+        {
+            <div class="rq-card rq-empty">Loading ticket…</div>
+        }
+        else if (ticket is null)
+        {
+            <div class="rq-card rq-empty">This ticket doesn't exist, or you don't have access to it.</div>
+        }
+        else
+        {
+            <div class="tk-layout">
+                <section class="rq-card tk-thread">
+                    @foreach (var m in visibleMessages)
+                    {
+                        if (m.IsEvent)
+                        {
+                            <div class="tk-event">@m.Body · @m.CreatedAt.ToString("MMM d, h:mm tt")</div>
+                            continue;
+                        }
+                        var fromIt = m.AuthorId != ticket.EmployeeId;
+                        <div class="tk-msg">
+                            <span class="rq-avatar">@InitialsOf(m.AuthorId)</span>
+                            <div class="tk-bubble @(m.IsInternal ? "internal" : fromIt ? "it" : "")">
+                                <div class="tk-bubble-head">
+                                    <strong>@NameOf(m.AuthorId, fromIt)</strong>
+                                    <span class="rq-muted">· @When(m.CreatedAt)</span>
+                                    @if (m.IsInternal)
+                                    {
+                                        <span class="tk-internal-tag">Internal note · only admins see this</span>
+                                    }
+                                </div>
+                                <div class="tk-bubble-body">@m.Body</div>
+                                @if (m.AttachmentStoredName is not null)
+                                {
+                                    @if (TicketFileStore.IsImage(m.AttachmentFileName))
+                                    {
+                                        <a href="/tickets/file/@m.Id" target="_blank" rel="noopener" class="tk-image-link">
+                                            <img src="/tickets/file/@m.Id" alt="@m.AttachmentFileName" class="tk-image" loading="lazy" />
+                                        </a>
+                                    }
+                                    <a href="/tickets/file/@m.Id" target="_blank" rel="noopener" class="tk-file-chip">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+                                        @m.AttachmentFileName
+                                        @if (m.AttachmentSize is long size)
+                                        {
+                                            <span class="rq-muted">· @Tickets.FormatSize(size)</span>
+                                        }
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="tk-reply">
+                        @if (CanReply)
+                        {
+                            @if (isAdmin)
+                            {
+                                <div class="rq-tabs" role="tablist" aria-label="Reply type">
+                                    <button type="button" role="tab" aria-selected="@(!replyInternal ? "true" : "false")" class="rq-tab @(!replyInternal ? "active" : "")" @onclick="() => replyInternal = false">Reply to @employeeFirstName</button>
+                                    <button type="button" role="tab" aria-selected="@(replyInternal ? "true" : "false")" class="rq-tab @(replyInternal ? "active" : "")" @onclick="() => replyInternal = true">Internal note</button>
+                                </div>
+                            }
+                            else if (ticket.Status == TicketOptions.StatusResolved)
+                            {
+                                <div class="rq-hint">Still having the problem? Reply within @TicketOptions.ReopenDays days of it being resolved and the ticket reopens.</div>
+                            }
+                            <textarea class="rq-input tk-reply-box @(replyInternal ? "internal" : "")" rows="3" maxlength="4000" aria-label="Your message" @bind="replyText"
+                                      placeholder="@(isAdmin ? (replyInternal ? "Only admins see this note." : $"Write a reply… {employeeFirstName} gets a notification.") : "Write a reply… IT gets a notification.")"></textarea>
+                            <div class="tk-reply-actions">
+                                <TicketAttachPicker @bind-Value="replyFile" Disabled="@isSaving" Label="Attach" />
+                                <div class="tk-reply-buttons">
+                                    @if (isAdmin && !replyInternal)
+                                    {
+                                        <button type="button" class="rq-btn-cancel" @onclick="() => SendReply(TicketOptions.StatusWaiting)" disabled="@isSaving">Send and mark Waiting</button>
+                                    }
+                                    <button type="button" class="rq-btn rq-btn-leave" @onclick="() => SendReply(null)" disabled="@isSaving">@(replyInternal ? "Save note" : "Send")</button>
+                                </div>
+                            </div>
+                            @if (replyError is not null)
+                            {
+                                <div class="rq-error">@replyError</div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="rq-hint">This ticket is closed. If the problem comes back, file a new ticket.</div>
+                        }
+                    </div>
+                </section>
+
+                <aside class="rq-card tk-side">
+                    @if (isAdmin)
+                    {
+                        <div class="rq-field">
+                            <label for="tkStatus">Status</label>
+                            <select id="tkStatus" class="rq-input" value="@ticket.Status" @onchange="ChangeStatus" disabled="@isSaving">
+                                @foreach (var s in TicketOptions.Statuses)
+                                {
+                                    <option value="@s">@(s == TicketOptions.StatusWaiting ? "Waiting on employee" : s)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="rq-field">
+                            <label for="tkPriority">Priority</label>
+                            <select id="tkPriority" class="rq-input" value="@ticket.Priority" @onchange="ChangePriority" disabled="@isSaving">
+                                @foreach (var p in TicketOptions.Priorities)
+                                {
+                                    <option value="@p">@p</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="rq-field">
+                            <span class="rq-label">Employee</span>
+                            <span>@employeeName</span>
+                            @if (!string.IsNullOrEmpty(employeeStatus))
+                            {
+                                <span class="rq-hint">Current status: @employeeStatus</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="rq-field">
+                            <span class="rq-label">Status</span>
+                            <span><span class="tk-pill tk-st-@TicketOptions.Css(ticket.Status)">@(ticket.Status == TicketOptions.StatusWaiting ? "Waiting on you" : ticket.Status)</span></span>
+                        </div>
+                        <div class="rq-field">
+                            <span class="rq-label">Priority</span>
+                            <span><span class="tk-pill tk-pri-@TicketOptions.Css(ticket.Priority)">@ticket.Priority</span></span>
+                        </div>
+                    }
+                    <div class="rq-field">
+                        <span class="rq-label">Category</span>
+                        <span>@ticket.Category</span>
+                    </div>
+                    <div class="rq-field">
+                        <span class="rq-label">Last update</span>
+                        <span>@ticket.UpdatedAt.ToString("MMM d, h:mm tt")</span>
+                    </div>
+                    @if (isAdmin && TicketOptions.IsActive(ticket.Status))
+                    {
+                        <button type="button" class="rq-btn tk-resolve-btn" @onclick="() => SetStatus(TicketOptions.StatusResolved)" disabled="@isSaving">Mark as resolved</button>
+                    }
+                </aside>
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    [Parameter] public int TicketId { get; set; }
+
+    private string? userId;
+    private bool isAdmin;
+    private bool loaded;
+    private bool isSaving;
+    private Ticket? ticket;
+    private List<TicketMessage> visibleMessages = new();
+    private Dictionary<string, (string Name, string First, string Initials)> people = new();
+    private string employeeName = "";
+    private string employeeFirstName = "";
+    private string? employeeStatus;
+
+    private string replyText = "";
+    private bool replyInternal;
+    private Microsoft.AspNetCore.Components.Forms.IBrowserFile? replyFile;
+    private string? replyError;
+
+    private string? message;
+    private bool messageIsError;
+    private CancellationTokenSource? messageCts;
+
+    /// <summary>Admins can always add to an open conversation; employees until it's Closed.</summary>
+    private bool CanReply => ticket is not null && ticket.Status != TicketOptions.StatusClosed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = UserManager.GetUserId(authState.User);
+        isAdmin = authState.User.IsInRole("Admin");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await Tickets.AutoCloseAsync(db, Clock.Now);
+
+        ticket = await db.Tickets.AsNoTracking()
+            .Include(t => t.Messages)
+            .FirstOrDefaultAsync(t => t.Id == TicketId);
+
+        // Employees only see their own tickets.
+        if (ticket is not null && !isAdmin && ticket.EmployeeId != userId)
+        {
+            ticket = null;
+        }
+
+        if (ticket is not null)
+        {
+            visibleMessages = ticket.Messages
+                .Where(m => isAdmin || !m.IsInternal)
+                .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
+                .ToList();
+
+            var ids = ticket.Messages.Where(m => m.AuthorId != null).Select(m => m.AuthorId!).Append(ticket.EmployeeId).Distinct().ToList();
+            var users = await db.Users.AsNoTracking()
+                .Where(u => ids.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus })
+                .ToListAsync();
+            people = users.ToDictionary(u => u.Id, u =>
+            {
+                var first = string.IsNullOrWhiteSpace(u.FirstName) ? (u.Email ?? "?") : u.FirstName;
+                var initials = (first[..1] + (string.IsNullOrWhiteSpace(u.LastName) ? "" : u.LastName[..1])).ToUpper();
+                return ($"{first} {u.LastName}".Trim(), first, initials);
+            });
+
+            var employee = people.TryGetValue(ticket.EmployeeId, out var e) ? e : ("Former employee", "them", "?");
+            employeeName = employee.Item1;
+            employeeFirstName = employee.Item2;
+            employeeStatus = isAdmin ? users.FirstOrDefault(u => u.Id == ticket.EmployeeId)?.CurrentStatus : null;
+        }
+
+        loaded = true;
+    }
+
+    private string NameOf(string? id, bool fromIt)
+    {
+        if (id is not null && people.TryGetValue(id, out var p))
+        {
+            return fromIt && !isAdmin ? "IT Admin" : (fromIt ? $"{p.First} (IT)" : p.Name);
+        }
+        return fromIt ? "IT Admin" : "Former employee";
+    }
+
+    private string InitialsOf(string? id) =>
+        id is not null && people.TryGetValue(id, out var p) ? (id != ticket?.EmployeeId && !isAdmin ? "IT" : p.Initials) : "IT";
+
+    private string When(DateTime at)
+    {
+        var today = Clock.Now.Date;
+        return at.Date == today ? at.ToString("h:mm tt") : at.ToString("MMM d, h:mm tt");
+    }
+
+    private async Task SendReply(string? thenStatus)
+    {
+        if (ticket is null || userId is null || isSaving || !CanReply) return;
+        replyError = null;
+        if (string.IsNullOrWhiteSpace(replyText) && replyFile is null)
+        {
+            replyError = "Write a message first.";
+            return;
+        }
+
+        isSaving = true;
+        string? storedName = null;
+        try
+        {
+            long? size = null;
+            if (replyFile is not null)
+            {
+                await using var stream = replyFile.OpenReadStream(TicketFileStore.MaxBytes);
+                var saved = await Files.SaveAsync(stream, replyFile.Name);
+                storedName = saved.StoredName;
+                size = saved.Size;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var tracked = await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticket.Id);
+            if (tracked is null || (!isAdmin && tracked.EmployeeId != userId))
+            {
+                Files.Delete(storedName);
+                replyError = "This ticket no longer exists.";
+                return;
+            }
+            if (tracked.Status == TicketOptions.StatusClosed)
+            {
+                Files.Delete(storedName);
+                replyError = "This ticket was closed.";
+                await LoadAsync();
+                return;
+            }
+
+            var now = Clock.Now;
+            var internalNote = isAdmin && replyInternal;
+            db.TicketMessages.Add(new TicketMessage
+            {
+                TicketId = tracked.Id,
+                AuthorId = userId,
+                Body = replyText.Trim(),
+                IsInternal = internalNote,
+                CreatedAt = now,
+                AttachmentStoredName = storedName,
+                AttachmentFileName = storedName is null ? null : Path.GetFileName(replyFile!.Name),
+                AttachmentSize = size
+            });
+            tracked.UpdatedAt = now;
+
+            var oldStatus = tracked.Status;
+            if (isAdmin && !internalNote)
+            {
+                // Replying moves a new ticket to In Progress, or to Waiting when asked.
+                var newStatus = thenStatus ?? (tracked.Status == TicketOptions.StatusOpen ? TicketOptions.StatusInProgress : tracked.Status);
+                ApplyStatus(db, tracked, newStatus, now);
+                Tickets.Notify(db, tracked.EmployeeId, Notification.KindTicketReply, tracked,
+                    $"IT replied{(newStatus == TicketOptions.StatusWaiting ? " and is waiting for your answer" : "")}: {Preview(replyText)}", now);
+            }
+            else if (!isAdmin)
+            {
+                // The employee answered or reopened it.
+                if (tracked.Status is TicketOptions.StatusWaiting)
+                {
+                    ApplyStatus(db, tracked, TicketOptions.StatusInProgress, now);
+                }
+                else if (tracked.Status is TicketOptions.StatusResolved)
+                {
+                    ApplyStatus(db, tracked, TicketOptions.StatusOpen, now, "Reopened by the employee");
+                }
+
+                var me = people.TryGetValue(userId, out var p) ? p.First : "The employee";
+                foreach (var adminId in await Tickets.AdminIdsAsync(db))
+                {
+                    Tickets.Notify(db, adminId, Notification.KindTicketReply, tracked,
+                        $"{me}{(oldStatus == TicketOptions.StatusResolved ? " reopened it" : " replied")}: {Preview(replyText)}", now);
+                }
+            }
+
+            await db.SaveChangesAsync();
+            replyText = "";
+            replyFile = null;
+            await LoadAsync();
+            ShowMessage(internalNote ? "Note saved." : "Reply sent.");
+        }
+        catch (InvalidDataException ex)
+        {
+            Files.Delete(storedName);
+            replyError = ex.Message;
+        }
+        catch (IOException ex)
+        {
+            Files.Delete(storedName);
+            Logger.LogWarning(ex, "Ticket reply attachment upload failed.");
+            replyError = "The file couldn't be uploaded. Try again, or send without it.";
+        }
+        catch (Exception ex)
+        {
+            Files.Delete(storedName);
+            Logger.LogError(ex, "Sending a ticket reply failed.");
+            replyError = "Something went wrong while sending. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ChangeStatus(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value is not null && TicketOptions.Statuses.Contains(value)) await SetStatus(value);
+    }
+
+    private async Task SetStatus(string status)
+    {
+        if (ticket is null || !isAdmin || isSaving) return;
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var tracked = await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticket.Id);
+            if (tracked is null || tracked.Status == status) return;
+
+            var now = Clock.Now;
+            ApplyStatus(db, tracked, status, now);
+            if (status == TicketOptions.StatusResolved)
+            {
+                Tickets.Notify(db, tracked.EmployeeId, Notification.KindTicketResolved, tracked,
+                    $"IT marked this as resolved. Still having the problem? Reply within {TicketOptions.ReopenDays} days to reopen it.", now);
+            }
+            await db.SaveChangesAsync();
+            await LoadAsync();
+            ShowMessage(status == TicketOptions.StatusResolved ? $"Resolved. {employeeFirstName} was notified." : $"Status changed to {status}.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Changing a ticket's status failed.");
+            ShowMessage("Couldn't change the status. Please try again.", true);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ChangePriority(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (ticket is null || !isAdmin || isSaving || value is null || !TicketOptions.Priorities.Contains(value)) return;
+        isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var tracked = await db.Tickets.FirstOrDefaultAsync(t => t.Id == ticket.Id);
+            if (tracked is null || tracked.Priority == value) return;
+
+            var now = Clock.Now;
+            db.TicketMessages.Add(new TicketMessage { TicketId = tracked.Id, AuthorId = userId, IsEvent = true, Body = $"Priority changed from {tracked.Priority} to {value}", CreatedAt = now });
+            tracked.Priority = value;
+            tracked.UpdatedAt = now;
+            await db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Changing a ticket's priority failed.");
+            ShowMessage("Couldn't change the priority. Please try again.", true);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    /// <summary>Sets a ticket's status and records the change in the conversation.</summary>
+    private void ApplyStatus(ApplicationDbContext db, Ticket tracked, string status, DateTime now, string? text = null)
+    {
+        if (tracked.Status == status) return;
+        db.TicketMessages.Add(new TicketMessage
+        {
+            TicketId = tracked.Id,
+            AuthorId = userId,
+            IsEvent = true,
+            Body = text ?? $"Status changed to {(status == TicketOptions.StatusWaiting ? "Waiting on employee" : status)}",
+            CreatedAt = now
+        });
+        tracked.Status = status;
+        tracked.UpdatedAt = now;
+        tracked.ResolvedAt = status is TicketOptions.StatusResolved or TicketOptions.StatusClosed ? (tracked.ResolvedAt ?? now) : null;
+    }
+
+    private static string Preview(string text)
+    {
+        var t = text.Trim().ReplaceLineEndings(" ");
+        return t.Length == 0 ? "(attachment)" : t.Length > 140 ? t[..137] + "…" : t;
+    }
+
+    private void ShowMessage(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+        messageCts?.Cancel();
+        messageCts = new CancellationTokenSource();
+        var token = messageCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(isError ? 10 : 6), token);
+                await InvokeAsync(() =>
+                {
+                    message = null;
+                    StateHasChanged();
+                });
+            }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        });
+    }
+
+    public void Dispose()
+    {
+        messageCts?.Cancel();
+        messageCts?.Dispose();
+    }
+}

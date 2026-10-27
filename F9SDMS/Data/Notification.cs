@@ -9,6 +9,9 @@ namespace F9SDMS.Data
         public const string KindOverdue = "Overdue";
         public const string KindRequestApproved = "RequestApproved";
         public const string KindRequestRejected = "RequestRejected";
+        public const string KindTicketNew = "TicketNew";
+        public const string KindTicketReply = "TicketReply";
+        public const string KindTicketResolved = "TicketResolved";
 
         [Key]
         public int Id { get; set; }

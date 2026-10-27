@@ -61,6 +61,14 @@
                 }
             </a>
         }
+        <a href="/it-support" class="navlink">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z" /><line x1="13" y1="5" x2="13" y2="19" stroke-dasharray="2 2" /></svg>
+            IT Support
+            @if (ticketCount > 0)
+            {
+                <span class="nav-badge">@ticketCount</span>
+            }
+        </a>
 
         <div class="sidebar-spacer"></div>
 
@@ -90,6 +98,21 @@
                 <div class="avatar">@initials</div>
             </div>
         </div>
+
+        @if (canViewTeamStatus)
+        {
+            <div class="home-tabs" role="tablist" aria-label="Dashboard view">
+                <button type="button" role="tab" aria-selected="@(homeTab == "overview" ? "true" : "false")" class="home-tab @(homeTab == "overview" ? "active" : "")" @onclick="@(() => homeTab = "overview")">Projects overview</button>
+                <button type="button" role="tab" aria-selected="@(homeTab == "dashboard" ? "true" : "false")" class="home-tab @(homeTab == "dashboard" ? "active" : "")" @onclick="@(() => homeTab = "dashboard")">@(isAdmin ? "Team and employees" : "My day and team")</button>
+            </div>
+            @if (homeTab == "overview")
+            {
+                <ProjectsOverview />
+            }
+        }
+
+        @* Hidden (not removed) on the overview tab so the timer and heartbeat keep running. *@
+        <div class="home-main" hidden="@(canViewTeamStatus && homeTab == "overview")">
 
         @if (!isAdmin)
         {
@@ -534,6 +557,7 @@
                 </table>
             </div>
         }
+        </div>
     </div>
 
     @if (showLogoutConfirm)
@@ -610,6 +634,10 @@
     private bool isOvertimeSession;
     private TimeSpan approvedOvertimeToday;
     private int pendingApprovals;
+    private int ticketCount;
+
+    // Managers and admins: "overview" (all projects) or "dashboard" (timer, my projects, team status).
+    private string homeTab = "overview";
     private string elapsed = "00:00:00";
     private string employeeName = "";
     private string initials = "";
@@ -802,8 +830,8 @@
             if (canViewTeamStatus)
             {
                 await LoadEmployees();
-                await LoadPendingApprovals();
             }
+            await LoadPendingApprovals();
         }
 
         UpdateElapsed();
@@ -882,6 +910,7 @@
                     try
                     {
                         await LoadMyProjects();
+                        await LoadPendingApprovals();
                     }
                     finally
                     {
@@ -928,8 +957,9 @@
 
     private async Task LoadPendingApprovals()
     {
-        if (!canViewTeamStatus) return;
         await using var db = await DbFactory.CreateDbContextAsync();
+        ticketCount = await F9SDMS.Services.Tickets.MenuCountAsync(db, currentUserId, isAdmin);
+        if (!canViewTeamStatus) return;
         pendingApprovals = await F9SDMS.Services.OvertimeRules.CountPendingApprovalsAsync(db, currentUserId);
     }
 

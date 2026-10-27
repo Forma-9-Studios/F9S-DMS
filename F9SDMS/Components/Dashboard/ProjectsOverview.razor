@@ -1,0 +1,468 @@
+@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IAppClock Clock
+@inject ILogger<ProjectsOverview> Logger
+
+@* Managers' and admins' birds-eye view of every active project. Refreshes every minute. *@
+
+<div class="ov">
+    @if (!loaded)
+    {
+        <div class="ov-card ov-empty">Loading overview…</div>
+    }
+    else
+    {
+        <div class="ov-kpis">
+            <div class="ov-card ov-kpi">
+                <span class="ov-kpi-label">Active projects</span>
+                <span class="ov-kpi-value">@projects.Count</span>
+                <span class="ov-kpi-sub">@DueThisMonth due this month</span>
+            </div>
+            <div class="ov-card ov-kpi">
+                <span class="ov-kpi-label">Tasks approved</span>
+                <span class="ov-kpi-value ov-green">@approvedTasks / @totalTasks</span>
+                <span class="ov-kpi-sub">@(totalTasks == 0 ? "No tasks yet" : $"{approvedTasks * 100 / totalTasks}% of all tasks")</span>
+            </div>
+            <div class="ov-card ov-kpi">
+                <span class="ov-kpi-label">Waiting for checking</span>
+                <span class="ov-kpi-value ov-purple">@(withChecker + withManager)</span>
+                <span class="ov-kpi-sub">@withChecker with checkers · @withManager with managers</span>
+            </div>
+            <div class="ov-card ov-kpi">
+                <span class="ov-kpi-label">Overdue tasks</span>
+                <span class="ov-kpi-value @(overdueTasks > 0 ? "ov-red" : "")">@overdueTasks</span>
+                <span class="ov-kpi-sub">@(overdueTasks == 0 ? "Nothing overdue" : $"on {overdueProjects} {(overdueProjects == 1 ? "project" : "projects")}")</span>
+            </div>
+            <div class="ov-card ov-kpi">
+                <span class="ov-kpi-label">Team hours this week</span>
+                <span class="ov-kpi-value ov-teal">@Hours(weekModeling + weekChecking)</span>
+                <span class="ov-kpi-sub">Modeling @Hours(weekModeling) · Checking @Hours(weekChecking)</span>
+            </div>
+        </div>
+
+        <div class="ov-row ov-row-main">
+            <section class="ov-card">
+                <div class="ov-card-head">
+                    <h2>Project progress</h2>
+                    <div class="ov-legend">
+                        <span><i class="ov-sw ov-bg-green"></i>Approved</span>
+                        <span><i class="ov-sw ov-bg-purple"></i>In checking</span>
+                        <span><i class="ov-sw ov-bg-teal"></i>In progress</span>
+                        <span><i class="ov-sw ov-bg-grey"></i>Not started</span>
+                    </div>
+                </div>
+                @if (projects.Count == 0)
+                {
+                    <div class="ov-empty">No active projects.</div>
+                }
+                else
+                {
+                    <div class="ov-proj ov-proj-head" aria-hidden="true">
+                        <span>Project</span><span>Tasks</span><span>Due</span><span>Overdue</span><span>PM</span><span>Health</span>
+                    </div>
+                    @foreach (var p in projects)
+                    {
+                        <a href="/projects/@p.Id" class="ov-proj">
+                            <span class="ov-proj-name"><span class="ov-code">@p.Code</span><strong>@p.Sample</strong></span>
+                            <span class="ov-proj-bar">
+                                @if (p.Total == 0)
+                                {
+                                    <span class="ov-muted">No tasks yet</span>
+                                }
+                                else
+                                {
+                                    <span class="ov-bar" role="img" aria-label="@p.Approved approved, @p.Checking in checking, @p.InProgress in progress, @p.NotStarted not started">
+                                        <span class="ov-bg-green" style="width: @Pct(p.Approved, p.Total)%"></span>
+                                        <span class="ov-bg-purple" style="width: @Pct(p.Checking, p.Total)%"></span>
+                                        <span class="ov-bg-teal" style="width: @Pct(p.InProgress, p.Total)%"></span>
+                                    </span>
+                                    <span class="ov-muted">@p.Approved of @p.Total tasks approved@(p.Checking > 0 ? $" · {p.Checking} in checking" : "")@(p.Returned > 0 ? $" · {p.Returned} returned" : "")</span>
+                                }
+                            </span>
+                            <span><strong>@p.DueDate.ToString("MMM d")</strong><span class="ov-sub @(p.DueRelativeLate ? "ov-red" : "")">@p.DueRelative</span></span>
+                            <span>@if (p.Overdue > 0) { <strong class="ov-red">@p.Overdue overdue</strong> } else { <span class="ov-muted">—</span> }</span>
+                            <span class="ov-pm">@p.ManagerName</span>
+                            <span><span class="ov-health ov-health-@p.HealthCss">@p.Health</span></span>
+                        </a>
+                    }
+                }
+            </section>
+
+            <section class="ov-card">
+                <h2>Tasks by stage</h2>
+                @if (totalTasks == 0)
+                {
+                    <div class="ov-empty">No tasks yet.</div>
+                }
+                else
+                {
+                    <div class="ov-donut-wrap">
+                        <svg class="ov-donut" viewBox="0 0 160 160" role="img" aria-label="Tasks by stage">
+                            @{ double offset = 0; }
+                            @foreach (var s in stages.Where(s => s.Count > 0))
+                            {
+                                var length = (double)s.Count / totalTasks * Circumference;
+                                <circle cx="80" cy="80" r="62" fill="none" class="ov-stroke-@s.Css" stroke-width="22"
+                                        stroke-dasharray="@Num(length) @Num(Circumference - length)" stroke-dashoffset="@Num(-offset)" transform="rotate(-90 80 80)"></circle>
+                                offset += length;
+                            }
+                            @SvgText(80, 78, "middle", "ov-donut-total", totalTasks.ToString())
+                            @SvgText(80, 97, "middle", "ov-donut-label", "tasks")
+                        </svg>
+                        <div class="ov-donut-legend">
+                            @foreach (var s in stages)
+                            {
+                                <div><span><i class="ov-sw ov-bg-@s.Css"></i>@s.Name</span><strong>@s.Count</strong></div>
+                            }
+                        </div>
+                    </div>
+                }
+            </section>
+        </div>
+
+        <div class="ov-row ov-row-three">
+            <section class="ov-card">
+                <div class="ov-card-head">
+                    <h2>Team workload this week</h2>
+                    <div class="ov-legend">
+                        <span><i class="ov-sw ov-bg-teal"></i>Modeling</span>
+                        <span><i class="ov-sw ov-bg-purple"></i>Checking</span>
+                    </div>
+                </div>
+                @if (team.Count == 0)
+                {
+                    <div class="ov-empty">No hours logged this week yet.</div>
+                }
+                else
+                {
+                    var max = Math.Max(team.Max(t => t.Modeling + t.Checking).TotalHours, 1);
+                    @foreach (var t in team)
+                    {
+                        <div class="ov-person">
+                            <span class="ov-person-name">
+                                <span class="ov-avatar">@t.Initials</span>
+                                <span><strong>@t.FirstName</strong><span class="ov-sub" title="@t.Status">@t.Status</span></span>
+                            </span>
+                            <span class="ov-bar ov-bar-thick">
+                                <span class="ov-bg-teal" style="width: @Num(t.Modeling.TotalHours / max * 100)%"></span>
+                                <span class="ov-bg-purple" style="width: @Num(t.Checking.TotalHours / max * 100)%"></span>
+                            </span>
+                            <strong class="ov-person-hours">@Hours(t.Modeling + t.Checking)</strong>
+                        </div>
+                    }
+                    <div class="ov-muted ov-small">Second line is what they're working on right now.</div>
+                }
+            </section>
+
+            <section class="ov-card">
+                <div class="ov-card-head">
+                    <h2>Team hours per day</h2>
+                    <span class="ov-muted ov-small">last 7 working days</span>
+                </div>
+                @{
+                    var dayMax = Math.Max(Math.Ceiling(days.Select(d => (d.Modeling + d.Checking).TotalHours).DefaultIfEmpty(0).Max() / 10) * 10, 10);
+                }
+                <svg class="ov-chart" viewBox="0 0 360 160" role="img" aria-label="Team hours per day">
+                    @foreach (var line in new[] { 0.0, dayMax / 2, dayMax })
+                    {
+                        var y = 135 - line / dayMax * 115;
+                        <line x1="30" x2="360" y1="@Num(y)" y2="@Num(y)" class="ov-gridline"></line>
+                        @SvgText(24, y + 4, "end", "ov-axis", line.ToString("0"))
+                    }
+                    @for (var i = 0; i < days.Count; i++)
+                    {
+                        var d = days[i];
+                        var x = 40 + i * 46;
+                        var hm = d.Modeling.TotalHours / dayMax * 115;
+                        var hc = d.Checking.TotalHours / dayMax * 115;
+                        <rect x="@x" y="@Num(135 - hm)" width="30" height="@Num(hm)" rx="2" class="ov-fill-teal"><title>@d.Date.ToString("ddd MMM d"): Modeling @Hours(d.Modeling)</title></rect>
+                        <rect x="@x" y="@Num(135 - hm - hc)" width="30" height="@Num(hc)" rx="2" class="ov-fill-purple"><title>@d.Date.ToString("ddd MMM d"): Checking @Hours(d.Checking)</title></rect>
+                        @SvgText(x + 15, 152, "middle", "ov-axis", d.Date.ToString("ddd"))
+                    }
+                </svg>
+            </section>
+
+            <section class="ov-card">
+                <h2>Deadlines this week</h2>
+                @if (deadlines.Count == 0)
+                {
+                    <div class="ov-empty">No task deadlines this week.</div>
+                }
+                else
+                {
+                    @foreach (var d in deadlines)
+                    {
+                        <a href="/projects/@d.ProjectId" class="ov-deadline">
+                            <span class="due-chip due-@d.Kind">@d.Label</span>
+                            <span class="ov-deadline-name">@d.Title</span>
+                            <span class="ov-muted ov-small">@d.Assignees</span>
+                        </a>
+                    }
+                    @if (moreDeadlines > 0)
+                    {
+                        <div class="ov-muted ov-small">+@moreDeadlines more this week</div>
+                    }
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private sealed record ProjectRow(int Id, string Code, string Sample, DateTime DueDate, string DueRelative, bool DueRelativeLate,
+        int Approved, int Checking, int InProgress, int NotStarted, int Returned, int Overdue, string ManagerName, string Health, string HealthCss)
+    {
+        public int Total => Approved + Checking + InProgress + NotStarted;
+    }
+
+    private sealed record Stage(string Name, string Css, int Count);
+    private sealed record Person(string FirstName, string Initials, string Status, TimeSpan Modeling, TimeSpan Checking);
+    private sealed record Day(DateTime Date, TimeSpan Modeling, TimeSpan Checking);
+    private sealed record Deadline(int ProjectId, string Title, string Kind, string Label, string Assignees, DateTime Date);
+
+    private const double Circumference = 2 * Math.PI * 62;
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
+
+    private bool loaded;
+    private List<ProjectRow> projects = new();
+    private List<Stage> stages = new();
+    private List<Person> team = new();
+    private List<Day> days = new();
+    private List<Deadline> deadlines = new();
+    private int moreDeadlines;
+    private int totalTasks, approvedTasks, withChecker, withManager, overdueTasks, overdueProjects;
+    private TimeSpan weekModeling, weekChecking;
+    private System.Threading.Timer? timer;
+    private bool disposed;
+
+    private int DueThisMonth
+    {
+        get
+        {
+            var now = Clock.Now;
+            return projects.Count(p => p.DueDate.Year == now.Year && p.DueDate.Month == now.Month);
+        }
+    }
+
+    // SVG <text> labels are written out as markup: Razor treats a literal <text> tag as its own keyword.
+    private static MarkupString SvgText(double x, double y, string anchor, string css, string value) =>
+        new($"<text x=\"{Num(x)}\" y=\"{Num(y)}\" text-anchor=\"{anchor}\" class=\"{css}\">{System.Net.WebUtility.HtmlEncode(value)}</text>");
+
+    private static string Pct(int part, int total) => Num(total == 0 ? 0 : part * 100.0 / total);
+    private static string Num(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Hours(TimeSpan span) => span.TotalHours >= 10 ? $"{span.TotalHours:0} h" : $"{span.TotalHours:0.#} h";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            timer = new System.Threading.Timer(_ => _ = InvokeAsync(RefreshAsync), null, RefreshInterval, RefreshInterval);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (disposed) return;
+        try
+        {
+            await LoadAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Overview refresh skipped.");
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var now = Clock.Now;
+            var today = now.Date;
+            var names = await ProjectChecking.GetNamesAsync(db);
+            string First(string id) => names.TryGetValue(id, out var n) ? n.Split(' ')[0] : "Someone";
+
+            var active = await db.Projects.AsNoTracking()
+                .Where(p => p.Status != ProjectOptions.StatusCompleted)
+                .Include(p => p.Subcategories).ThenInclude(s => s.Tasks).ThenInclude(t => t.Assignees)
+                .OrderBy(p => p.DueDate)
+                .ToListAsync();
+            var activeIds = active.Select(p => p.Id).ToList();
+
+            // Which tasks have any hours or submissions (In Progress vs Not started).
+            var workedTaskIds = (await db.ProjectTimeEntries.AsNoTracking()
+                    .Where(t => activeIds.Contains(t.ProjectId) && t.TaskId != null)
+                    .Select(t => t.TaskId!.Value).Distinct().ToListAsync())
+                .Concat(await db.CheckSubmissions.AsNoTracking()
+                    .Where(c => activeIds.Contains(c.ProjectId) && c.TaskId != null)
+                    .Select(c => c.TaskId!.Value).Distinct().ToListAsync())
+                .ToHashSet();
+
+            int nApproved = 0, nChecker = 0, nManager = 0, nReturned = 0, nProgress = 0, nNotStarted = 0, nOverdue = 0, nOverdueProjects = 0;
+            var rows = new List<ProjectRow>();
+            var upcoming = new List<Deadline>();
+            var weekEnd = today.AddDays(7 - (((int)today.DayOfWeek + 6) % 7)); // next Monday
+
+            foreach (var p in active)
+            {
+                var tasks = p.Subcategories.Where(s => !s.IsArchived).SelectMany(s => s.Tasks.Where(t => !t.IsArchived).Select(t => (Sub: s, Task: t))).ToList();
+                int approved = 0, checking = 0, inProgress = 0, notStarted = 0, returned = 0, overdue = 0;
+                foreach (var (sub, t) in tasks)
+                {
+                    switch (t.Status)
+                    {
+                        case ProjectOptions.StatusApproved:
+                            approved++; nApproved++;
+                            break;
+                        case ProjectOptions.StatusForChecking:
+                        case ProjectOptions.StatusReturnedByManager:
+                            checking++; nChecker++;
+                            break;
+                        case ProjectOptions.StatusManagerCheck:
+                            checking++; nManager++;
+                            break;
+                        case ProjectOptions.StatusReturned:
+                            inProgress++; returned++; nReturned++;
+                            break;
+                        default:
+                            if (workedTaskIds.Contains(t.Id)) { inProgress++; nProgress++; }
+                            else { notStarted++; nNotStarted++; }
+                            break;
+                    }
+
+                    if (t.Status != ProjectOptions.StatusApproved && t.Deadline is DateTime deadline)
+                    {
+                        if (deadline.Date < today) overdue++;
+                        if (deadline.Date < weekEnd)
+                        {
+                            var kind = TaskReminders.DueKind(deadline, now, t.Status) ?? "later";
+                            var label = kind switch
+                            {
+                                "overdue" => deadline.ToString("MMM d"),
+                                "today" => "Today",
+                                "tomorrow" => "Tomorrow",
+                                _ => deadline.ToString("ddd")
+                            };
+                            var assignees = t.Assignees.Count == 0 ? "Not assigned" : string.Join(", ", t.Assignees.Select(a => First(a.EmployeeId)));
+                            upcoming.Add(new Deadline(p.Id, $"{p.Sample} › {sub.Name} › {t.Name}", kind, label, assignees, deadline.Date));
+                        }
+                    }
+                }
+
+                nOverdue += overdue;
+                if (overdue > 0) nOverdueProjects++;
+
+                var total = tasks.Count;
+                var daysLeft = (p.DueDate.Date - today).Days;
+                // Plain ifs on purpose: a switch arm starting with a less-than sign is read as HTML in .razor files.
+                string relative;
+                if (daysLeft == -1) relative = "1 day late";
+                else if (daysLeft < 0) relative = $"{-daysLeft} days late";
+                else if (daysLeft == 0) relative = "today";
+                else if (daysLeft == 1) relative = "tomorrow";
+                else relative = $"in {daysLeft} days";
+
+                string health;
+                if (total > 0 && approved == total) health = "Ready to close";
+                else if (overdue > 0 || daysLeft < 0) health = "Behind";
+                else if (daysLeft <= 3) health = "At risk";
+                else health = "On track";
+
+                var managerId = p.ManagerId ?? p.CreatedById;
+                rows.Add(new ProjectRow(p.Id, p.Code, p.Sample, p.DueDate, relative, daysLeft <= 0,
+                    approved, checking, inProgress, notStarted, returned, overdue,
+                    managerId is null ? "—" : First(managerId), health, health.ToLowerInvariant().Replace(' ', '-')));
+            }
+
+            projects = rows;
+            totalTasks = nApproved + nChecker + nManager + nReturned + nProgress + nNotStarted;
+            approvedTasks = nApproved;
+            withChecker = nChecker;
+            withManager = nManager;
+            overdueTasks = nOverdue;
+            overdueProjects = nOverdueProjects;
+            stages = new()
+            {
+                new("Approved", "green", nApproved),
+                new("With checker", "purple", nChecker),
+                new("With manager", "violet", nManager),
+                new("Returned", "red", nReturned),
+                new("In progress", "teal", nProgress),
+                new("Not started", "grey", nNotStarted)
+            };
+
+            var sortedDeadlines = upcoming.OrderBy(d => d.Date).ToList();
+            deadlines = sortedDeadlines.Take(6).ToList();
+            moreDeadlines = Math.Max(0, sortedDeadlines.Count - 6);
+
+            // Hours: this week per person, and per day for the last 7 working days.
+            var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+            var workDays = new List<DateTime>();
+            for (var d = today; workDays.Count < 7; d = d.AddDays(-1))
+            {
+                if (d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday) workDays.Add(d);
+            }
+            workDays.Reverse();
+            var from = workDays[0] < monday ? workDays[0] : monday;
+
+            var entries = await db.ProjectTimeEntries.AsNoTracking()
+                .Where(t => t.StartTime >= from)
+                .Select(t => new { t.EmployeeId, t.WorkType, t.StartTime, t.EndTime })
+                .ToListAsync();
+            TimeSpan Length(DateTime start, DateTime? end) => (end ?? now) > start ? (end ?? now) - start : TimeSpan.Zero;
+            bool IsChecking(string type) => type == ProjectOptions.WorkChecking;
+
+            var week = entries.Where(e => e.StartTime >= monday).ToList();
+            weekModeling = week.Where(e => !IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime));
+            weekChecking = week.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime));
+
+            days = workDays.Select(d =>
+            {
+                var onDay = entries.Where(e => e.StartTime.Date == d).ToList();
+                return new Day(d,
+                    onDay.Where(e => !IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)),
+                    onDay.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)));
+            }).ToList();
+
+            var people = await db.Users.AsNoTracking()
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus })
+                .ToListAsync();
+            team = week.GroupBy(e => e.EmployeeId)
+                .Select(g =>
+                {
+                    var u = people.FirstOrDefault(x => x.Id == g.Key);
+                    var first = u is null ? "Former employee" : (string.IsNullOrWhiteSpace(u.FirstName) ? (u.Email ?? "?") : u.FirstName);
+                    var initials = u is null ? "?" : (first[..1] + (string.IsNullOrWhiteSpace(u.LastName) ? "" : u.LastName[..1])).ToUpper();
+                    return new Person(first, initials, string.IsNullOrWhiteSpace(u?.CurrentStatus) ? "—" : u!.CurrentStatus,
+                        g.Where(e => !IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)),
+                        g.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)));
+                })
+                .OrderByDescending(p => p.Modeling + p.Checking)
+                .Take(8)
+                .ToList();
+
+            loaded = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading the projects overview failed.");
+            loaded = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        timer?.Dispose();
+    }
+}
