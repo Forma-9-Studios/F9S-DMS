@@ -3,6 +3,7 @@ using F9SDMS.Components.Account;
 using F9SDMS.Data;
 using F9SDMS.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
@@ -39,12 +40,14 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+// Queries that include several lists (e.g. a project's assignments and sub-categories) load each
+// list separately instead of one big joined result: faster, and stops EF's warning about it.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseSqlite(connectionString, o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 // Components that do background work (e.g. the dashboard's refresh timer) create
 // short-lived contexts from this factory instead of sharing the circuit-wide context.
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString), ServiceLifetime.Scoped);
+    options.UseSqlite(connectionString, o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)), ServiceLifetime.Scoped);
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
@@ -70,7 +73,62 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 builder.Services.Configure<SecurityStampValidatorOptions>(options =>
     options.ValidationInterval = TimeSpan.FromMinutes(1));
 
+// On the server the app sits behind Caddy, which handles HTTPS and passes requests on over plain
+// HTTP. These headers tell the app the original request was HTTPS (for secure cookies and redirects).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
+
+app.UseForwardedHeaders();
+
+// Bring the database up to date and make sure the roles exist. On a brand-new database (the server),
+// the first Admin is created from FirstAdmin:Email / FirstAdmin:Password and must choose a new
+// password at first sign-in.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
+
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    foreach (var role in new[] { "Admin", "Manager", "Employee" })
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+        {
+            await roleManager.CreateAsync(new IdentityRole(role));
+        }
+    }
+
+    var adminEmail = app.Configuration["FirstAdmin:Email"];
+    var adminPassword = app.Configuration["FirstAdmin:Password"];
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword) && !await userManager.Users.AnyAsync())
+    {
+        var admin = new ApplicationUser
+        {
+            UserName = adminEmail,
+            Email = adminEmail,
+            EmailConfirmed = true,
+            FirstName = app.Configuration["FirstAdmin:FirstName"] ?? "Admin",
+            LastName = app.Configuration["FirstAdmin:LastName"] ?? "",
+            MustChangePassword = true
+        };
+        var created = await userManager.CreateAsync(admin, adminPassword);
+        if (created.Succeeded)
+        {
+            await userManager.AddToRoleAsync(admin, "Admin");
+            app.Logger.LogWarning("Created the first Admin account {Email}.", adminEmail);
+        }
+        else
+        {
+            app.Logger.LogError("Could not create the first Admin: {Errors}", string.Join(" ", created.Errors.Select(e => e.Description)));
+        }
+    }
+}
 
 // Convert data from before tasks and two-level checking (only touches rows that still need it).
 using (var scope = app.Services.CreateScope())
@@ -112,6 +170,25 @@ app.UseStaticFiles();
 // is read and everyone is sent back to the sign-in page.
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Leftover Identity template pages the app doesn't use (email reset, two-factor, external logins,
+// self-service account deletion...). They aren't linked anywhere; this keeps them unreachable.
+// Accounts are managed by admins; people change their password at /Account/ChangePassword.
+string[] blockedAccountPaths =
+{
+    "/Account/Manage", "/Account/ForgotPassword", "/Account/ResetPassword", "/Account/Register",
+    "/Account/ConfirmEmail", "/Account/ResendEmailConfirmation", "/Account/ExternalLogin", "/Account/PerformExternalLogin",
+    "/Account/LoginWith2fa", "/Account/LoginWithRecoveryCode", "/Account/InvalidPasswordReset"
+};
+app.Use(async (context, next) =>
+{
+    if (blockedAccountPaths.Any(p => context.Request.Path.StartsWithSegments(p, StringComparison.OrdinalIgnoreCase)))
+    {
+        context.Response.Redirect("/");
+        return;
+    }
+    await next();
+});
 
 // Someone signed in with a temporary password (new account or admin reset) must choose their own
 // before opening any page. A deactivated account is signed out.

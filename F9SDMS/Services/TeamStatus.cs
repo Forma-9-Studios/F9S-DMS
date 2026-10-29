@@ -116,7 +116,7 @@ namespace F9SDMS.Services
                     .OrderByDescending(s => s.ClockInTime)
                     .FirstOrDefault();
                 var todayTotal = todaySessions.Where(s => s.EmployeeId == u.Id)
-                    .Aggregate(TimeSpan.Zero, (sum, s) => sum + ((s.ClockOutTime ?? now) > s.ClockInTime ? (s.ClockOutTime ?? now) - s.ClockInTime : TimeSpan.Zero));
+                    .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.WorkTime(s.ClockInTime, s.ClockOutTime ?? now));
                 var overdue = assigned.Count(a => a.EmployeeId == u.Id && a.Deadline.Date < today);
                 var dueSoon = assigned.Count(a => a.EmployeeId == u.Id && a.Deadline.Date >= today && a.Deadline.Date <= today.AddDays(1));
 
@@ -232,10 +232,11 @@ namespace F9SDMS.Services
                 .Where(s => s.EmployeeId == employeeId && s.ClockInTime >= monday)
                 .Select(s => new { s.ClockInTime, s.ClockOutTime })
                 .ToListAsync();
+            // Lunch (3:00 to 4:00 PM) doesn't count.
             var todayTotal = sessions.Where(s => s.ClockInTime >= today)
-                .Aggregate(TimeSpan.Zero, (sum, s) => sum + ((s.ClockOutTime ?? now) - s.ClockInTime));
+                .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.WorkTime(s.ClockInTime, s.ClockOutTime ?? now));
             var weekTotal = sessions
-                .Aggregate(TimeSpan.Zero, (sum, s) => sum + ((s.ClockOutTime ?? now) - s.ClockInTime));
+                .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.WorkTime(s.ClockInTime, s.ClockOutTime ?? now));
 
             var tasks = await db.TaskAssignees.AsNoTracking()
                 .Where(a => a.EmployeeId == employeeId && a.Task != null && !a.Task.IsArchived && a.Task.Status != ProjectOptions.StatusApproved)

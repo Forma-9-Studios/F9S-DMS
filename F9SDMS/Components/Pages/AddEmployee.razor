@@ -1,4 +1,4 @@
-﻿@page "/admin/add-employee"
+@page "/admin/add-employee"
 @layout EmptyLayout
 @rendermode InteractiveServer
 @attribute [Authorize(Roles = "Admin")]
@@ -7,119 +7,169 @@
 @using Microsoft.AspNetCore.Identity
 
 @inject UserManager<ApplicationUser> UserManager
-@inject RoleManager<IdentityRole> RoleManager
-@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
 
 <PageTitle>Add Employee</PageTitle>
 
-<div class="admin-page">
-    <div class="admin-card">
-        <a href="/" class="back-link">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-            Back to Dashboard
-        </a>
-
-        <div class="page-header">
-            <div class="header-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" /></svg>
-            </div>
-            <div>
-                <h1>Add Employee</h1>
-                <p class="page-subtitle">Create a new account and assign a role.</p>
-            </div>
-        </div>
-
-        <EditForm Model="Input" OnValidSubmit="HandleCreate" FormName="addEmployee">
-            <DataAnnotationsValidator />
-
-            <div class="form-row">
-                <div class="form-field">
-                    <label>First name</label>
-                    <InputText @bind-Value="Input.FirstName" class="form-input" />
-                    <ValidationMessage For="() => Input.FirstName" class="field-error" />
-                </div>
-                <div class="form-field">
-                    <label>Last name</label>
-                    <InputText @bind-Value="Input.LastName" class="form-input" />
-                    <ValidationMessage For="() => Input.LastName" class="field-error" />
-                </div>
-            </div>
-
-            <div class="form-field">
-                <label>Email</label>
-                <InputText @bind-Value="Input.Email" type="email" class="form-input" autocomplete="off" />
-                <ValidationMessage For="() => Input.Email" class="field-error" />
-            </div>
-
-            <div class="form-field">
-                <label>Temporary password</label>
-                <div class="reset-row">
-                    <InputText @bind-Value="Input.Password" type="text" class="form-input" autocomplete="off" />
-                    <button type="button" class="generate-btn" @onclick="() => Input.Password = F9SDMS.Services.PasswordHelper.GenerateTemporary()">Generate</button>
-                </div>
-                <span class="optional-label">8+ characters with upper and lower case and a number. They'll choose their own password at first sign-in.</span>
-                <ValidationMessage For="() => Input.Password" class="field-error" />
-            </div>
-
-            <div class="form-field">
-                <label>Start date <span class="optional-label">(for leave credits)</span></label>
-                <InputDate @bind-Value="Input.StartDate" class="form-input" />
-            </div>
-
-            @if (Input.Role == "Employee")
+<AppShell Active="add-employee" Title="Add Employee" Subtitle="Create an account. They'll sign in with a temporary password and choose their own.">
+    <ChildContent>
+        <div class="ae-layout">
+            @if (created is not null)
             {
-                <div class="form-field">
-                    <label>Team manager <span class="optional-label">(optional)</span></label>
-                    <InputSelect @bind-Value="Input.TeamManagerId" class="form-input select-input">
-                        <option value="">No team</option>
-                        @foreach (var m in managers)
+                <section class="rq-card ae-card ae-done">
+                    <div class="ae-done-head">
+                        <span class="ae-done-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polyline points="20 6 9 17 4 12" /></svg>
+                        </span>
+                        <div>
+                            <h2>@created.Name was added</h2>
+                            <p class="rq-hint">Send them these sign-in details. The password only works once: they'll set their own at first sign-in.</p>
+                        </div>
+                    </div>
+
+                    <div class="ae-cred">
+                        <div class="ae-cred-row">
+                            <span class="ae-cred-label">Sign-in email</span>
+                            <code>@created.Email</code>
+                            <button type="button" class="ae-copy" @onclick="() => CopyAsync(created.Email, 0)">@(copied == 0 ? "Copied" : "Copy")</button>
+                        </div>
+                        <div class="ae-cred-row">
+                            <span class="ae-cred-label">Temporary password</span>
+                            <code>@created.Password</code>
+                            <button type="button" class="ae-copy" @onclick="() => CopyAsync(created.Password, 1)">@(copied == 1 ? "Copied" : "Copy")</button>
+                        </div>
+                    </div>
+
+                    <div class="ae-summary">
+                        <span><span class="ae-summary-label">Role</span>@created.Role</span>
+                        <span><span class="ae-summary-label">Team</span>@(created.Team ?? "—")</span>
+                        <span><span class="ae-summary-label">Start date</span>@(created.StartDate?.ToString("MMM d, yyyy") ?? "—")</span>
+                    </div>
+
+                    <div class="ae-actions">
+                        <a href="/" class="rq-btn-cancel ae-link-btn">Back to employees</a>
+                        <button type="button" class="rq-btn rq-btn-leave" @onclick="AddAnother">Add another</button>
+                    </div>
+                </section>
+            }
+            else
+            {
+                <EditForm Model="Input" OnValidSubmit="HandleCreate" FormName="addEmployee" class="rq-card ae-card">
+                    <DataAnnotationsValidator />
+
+                    <div class="ae-section">
+                        <div class="ae-section-title"><span class="ae-step">1</span>Personal details</div>
+                        <div class="ae-grid">
+                            <div class="rq-field">
+                                <label>First name</label>
+                                <InputText @bind-Value="Input.FirstName" class="rq-input" />
+                                <ValidationMessage For="() => Input.FirstName" class="ae-error" />
+                            </div>
+                            <div class="rq-field">
+                                <label>Last name</label>
+                                <InputText @bind-Value="Input.LastName" class="rq-input" />
+                                <ValidationMessage For="() => Input.LastName" class="ae-error" />
+                            </div>
+                            <div class="rq-field">
+                                <label>Start date <span class="rq-optional">(for leave credits)</span></label>
+                                <InputDate @bind-Value="Input.StartDate" class="rq-input" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ae-section">
+                        <div class="ae-section-title"><span class="ae-step">2</span>Sign-in</div>
+                        <div class="rq-field">
+                            <label>Email</label>
+                            <InputText @bind-Value="Input.Email" type="email" class="rq-input" autocomplete="off" placeholder="name@f9s.com" />
+                            <ValidationMessage For="() => Input.Email" class="ae-error" />
+                        </div>
+                        <div class="rq-field">
+                            <label>Temporary password</label>
+                            <div class="ae-pass-row">
+                                <InputText @bind-Value="Input.Password" type="text" class="rq-input ae-mono" autocomplete="off" />
+                                <button type="button" class="rq-btn-cancel" @onclick="() => Input.Password = F9SDMS.Services.PasswordHelper.GenerateTemporary()">Generate</button>
+                            </div>
+                            <span class="rq-hint">At least 8 characters with upper and lower case and a number.</span>
+                            <ValidationMessage For="() => Input.Password" class="ae-error" />
+                        </div>
+                    </div>
+
+                    <div class="ae-section">
+                        <div class="ae-section-title"><span class="ae-step">3</span>Role and team</div>
+                        <InputRadioGroup @bind-Value="Input.Role">
+                            <div class="ae-roles">
+                                @foreach (var (role, text) in RoleOptions)
+                                {
+                                    <label class="ae-role @(Input.Role == role ? "selected" : "")">
+                                        <InputRadio Value="role" />
+                                        <span class="ae-role-name">@role</span>
+                                        <span class="ae-role-text">@text</span>
+                                    </label>
+                                }
+                            </div>
+                        </InputRadioGroup>
+
+                        @if (Input.Role == "Employee")
                         {
-                            <option value="@m.Id">@m.Name</option>
+                            <div class="rq-field">
+                                <label>Team <span class="rq-optional">(optional)</span></label>
+                                <InputSelect @bind-Value="Input.TeamManagerId" class="rq-input">
+                                    <option value="">No team yet</option>
+                                    @foreach (var m in managers)
+                                    {
+                                        <option value="@m.Id">@m.Name's team</option>
+                                    }
+                                </InputSelect>
+                                <span class="rq-hint">Their manager sees them on the My team tab.</span>
+                            </div>
                         }
-                    </InputSelect>
-                </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="ae-alert" role="alert">@errorMessage</div>
+                    }
+
+                    <div class="ae-actions">
+                        <a href="/" class="rq-btn-cancel ae-link-btn">Cancel</a>
+                        <button type="submit" class="rq-btn rq-btn-leave" disabled="@isSubmitting">@(isSubmitting ? "Creating..." : "Create account")</button>
+                    </div>
+                </EditForm>
             }
 
-            <div class="form-field">
-                <label>Role</label>
-                <InputSelect @bind-Value="Input.Role" class="form-input select-input">
-                    <option value="Employee">Employee</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Admin">Admin</option>
-                </InputSelect>
-            </div>
+            <aside class="rq-card ae-side">
+                <h3>What happens next</h3>
+                <ol class="ae-steps">
+                    <li><strong>Send the sign-in details</strong><span>Share the email and temporary password with them directly.</span></li>
+                    <li><strong>They set their own password</strong><span>At first sign-in they choose a new password before using the app.</span></li>
+                    <li><strong>They start tracking time</strong><span>Signing in clocks them in. Add them to projects from the Projects page.</span></li>
+                </ol>
+                <p class="rq-hint ae-side-note">Leave credits are earned monthly from the start date (from January 1 if it's left blank).</p>
+            </aside>
+        </div>
+    </ChildContent>
+</AppShell>
 
-            @if (!string.IsNullOrEmpty(statusMessage))
-            {
-                <div class="status-banner @(succeeded ? "success" : "error")">
-                    @if (succeeded)
-                    {
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-                    }
-                    else
-                    {
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                    }
-                    <span>@statusMessage</span>
-                </div>
-            }
-
-            <button type="submit" class="submit-button" disabled="@isSubmitting">
-                @(isSubmitting ? "Creating..." : "Create Employee")
-            </button>
-        </EditForm>
-    </div>
-</div>
 @code {
     private InputModel Input { get; set; } = new();
-    private string? statusMessage;
-    private bool succeeded;
+    private string? errorMessage;
     private bool isSubmitting;
+    private Created? created;
+    private int? copied;
 
-    private static readonly string[] AllowedRoles = { "Employee", "Manager", "Admin" };
-
+    private sealed record Created(string Name, string Email, string Password, string Role, string? Team, DateTime? StartDate);
     private sealed record ManagerOption(string Id, string Name);
     private List<ManagerOption> managers = new();
+
+    private static readonly (string Role, string Text)[] RoleOptions =
+    {
+        ("Employee", "Tracks time and works on assigned projects and tasks."),
+        ("Manager", "Leads a team, manages projects and approves requests."),
+        ("Admin", "Manages accounts and settings. Admins don't track time.")
+    };
+
+    private static readonly string[] AllowedRoles = { "Employee", "Manager", "Admin" };
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,39 +179,39 @@
             .Select(u => new ManagerOption(u.Id, $"{u.FirstName} {u.LastName}".Trim() is { Length: > 0 } n ? n : (u.Email ?? "Manager")))
             .OrderBy(m => m.Name)
             .ToList();
+        Input.Password = F9SDMS.Services.PasswordHelper.GenerateTemporary();
     }
 
     private async Task HandleCreate()
     {
         isSubmitting = true;
-        statusMessage = null;
+        errorMessage = null;
 
         try
         {
             if (!AllowedRoles.Contains(Input.Role))
             {
-                succeeded = false;
-                statusMessage = "Please choose a valid role.";
+                errorMessage = "Please choose a valid role.";
                 return;
             }
 
+            var teamId = Input.Role != "Employee" || string.IsNullOrEmpty(Input.TeamManagerId) ? null : Input.TeamManagerId;
             var newUser = new ApplicationUser
             {
-                UserName = Input.Email,
-                Email = Input.Email,
+                UserName = Input.Email.Trim(),
+                Email = Input.Email.Trim(),
                 EmailConfirmed = true,
-                FirstName = Input.FirstName,
-                LastName = Input.LastName,
+                FirstName = Input.FirstName.Trim(),
+                LastName = Input.LastName.Trim(),
                 StartDate = Input.StartDate?.Date,
                 MustChangePassword = true,
-                TeamManagerId = Input.Role != "Employee" || string.IsNullOrEmpty(Input.TeamManagerId) ? null : Input.TeamManagerId
+                TeamManagerId = teamId
             };
 
             var result = await UserManager.CreateAsync(newUser, Input.Password);
             if (!result.Succeeded)
             {
-                succeeded = false;
-                statusMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+                errorMessage = string.Join(" ", result.Errors.Select(e => e.Description));
                 return;
             }
 
@@ -170,15 +220,19 @@
             {
                 // Don't leave an account behind without a role.
                 await UserManager.DeleteAsync(newUser);
-                succeeded = false;
-                statusMessage = "Could not assign the role, so the account was not created: "
+                errorMessage = "Could not assign the role, so the account was not created: "
                     + string.Join(" ", roleResult.Errors.Select(e => e.Description));
                 return;
             }
 
-            succeeded = true;
-            statusMessage = $"{Input.FirstName} {Input.LastName} was created successfully as {Input.Role}.";
-            Input = new InputModel();
+            created = new Created(
+                $"{newUser.FirstName} {newUser.LastName}".Trim(),
+                newUser.Email!,
+                Input.Password,
+                Input.Role,
+                teamId is null ? null : managers.FirstOrDefault(m => m.Id == teamId)?.Name + "'s team",
+                newUser.StartDate);
+            copied = null;
         }
         finally
         {
@@ -186,19 +240,39 @@
         }
     }
 
+    private async Task CopyAsync(string text, int which)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            copied = which;
+        }
+        catch
+        {
+            // Clipboard can be blocked (e.g. over plain http); the text is still on screen to copy.
+        }
+    }
+
+    private void AddAnother()
+    {
+        created = null;
+        errorMessage = null;
+        Input = new InputModel { Password = F9SDMS.Services.PasswordHelper.GenerateTemporary() };
+    }
+
     private sealed class InputModel
     {
-        [Required]
+        [Required(ErrorMessage = "Enter their first name.")]
         public string FirstName { get; set; } = "";
 
-        [Required]
+        [Required(ErrorMessage = "Enter their last name.")]
         public string LastName { get; set; } = "";
 
-        [Required]
-        [EmailAddress]
+        [Required(ErrorMessage = "Enter their email.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
         public string Email { get; set; } = "";
 
-        [Required]
+        [Required(ErrorMessage = "Enter or generate a temporary password.")]
         [MinLength(8, ErrorMessage = "Use at least 8 characters.")]
         public string Password { get; set; } = "";
 

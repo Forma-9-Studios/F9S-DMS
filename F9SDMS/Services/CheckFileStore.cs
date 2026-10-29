@@ -12,9 +12,11 @@
 
         private readonly string _root;
 
-        public CheckFileStore(IWebHostEnvironment env)
+        public CheckFileStore(IWebHostEnvironment env, IConfiguration config)
         {
-            _root = Path.Combine(env.ContentRootPath, "App_Data", "checks");
+            // On the server, FileStorage:Root points outside the app folder so redeploying never touches uploads.
+            var root = config["FileStorage:Root"];
+            _root = Path.Combine(string.IsNullOrWhiteSpace(root) ? Path.Combine(env.ContentRootPath, "App_Data") : root, "checks");
             Directory.CreateDirectory(_root);
         }
 

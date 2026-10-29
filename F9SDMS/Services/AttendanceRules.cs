@@ -21,9 +21,56 @@ namespace F9SDMS.Services
         /// </summary>
         public static readonly TimeSpan HeartbeatGracePeriod = TimeSpan.FromMinutes(15);
 
-        /// <summary>How long a regular session may run (null for overtime, which has no limit).</summary>
+        /// <summary>
+        /// The daily lunch break (3:00 to 4:00 PM). It doesn't count towards the 8 hours, so a
+        /// session that spans it ends an hour later (11:00 AM sign-in, 8:00 PM auto logout).
+        /// </summary>
+        public static readonly TimeSpan LunchStart = new(15, 0, 0);
+        public static readonly TimeSpan LunchEnd = new(16, 0, 0);
+
+        /// <summary>How much of [start, end) falls in a lunch break.</summary>
+        public static TimeSpan LunchOverlap(DateTime start, DateTime end)
+        {
+            var total = TimeSpan.Zero;
+            for (var day = start.Date; day <= end.Date; day = day.AddDays(1))
+            {
+                var from = day + LunchStart > start ? day + LunchStart : start;
+                var to = day + LunchEnd < end ? day + LunchEnd : end;
+                if (to > from) total += to - from;
+            }
+            return total;
+        }
+
+        /// <summary>Time between <paramref name="start"/> and <paramref name="end"/>, not counting lunch.</summary>
+        public static TimeSpan WorkTime(DateTime start, DateTime end) =>
+            end <= start ? TimeSpan.Zero : end - start - LunchOverlap(start, end);
+
+        /// <summary>When <paramref name="work"/> of working time (lunch excluded) has passed since <paramref name="start"/>.</summary>
+        public static DateTime AddWorkTime(DateTime start, TimeSpan work)
+        {
+            var end = start + work;
+            for (var i = 0; i < 4; i++)
+            {
+                var next = start + work + LunchOverlap(start, end);
+                if (next == end) break;
+                end = next;
+            }
+            return end;
+        }
+
+        /// <summary>
+        /// How much working time (lunch excluded) a regular session may count. Null for overtime,
+        /// which has no limit.
+        /// </summary>
         public static TimeSpan? GetLimit(AttendanceSession session) =>
             session.IsOvertime ? null : TimeSpan.FromMinutes(session.LimitMinutes ?? (int)MaxSessionLength.TotalMinutes);
+
+        /// <summary>When a regular session is logged out automatically (null for overtime).</summary>
+        public static DateTime? GetEndTime(AttendanceSession session) =>
+            GetLimit(session) is TimeSpan work ? AddWorkTime(session.ClockInTime, work) : null;
+
+        /// <summary>True during the lunch break.</summary>
+        public static bool IsLunch(DateTime now) => now.TimeOfDay >= LunchStart && now.TimeOfDay < LunchEnd;
 
         /// <summary>
         /// Returns the time an open session should be clocked out at, or null if it is still active.
@@ -31,11 +78,12 @@ namespace F9SDMS.Services
         public static DateTime? GetAutoClockOutTime(AttendanceSession session, DateTime now)
         {
             // Overtime has no limit of its own; it only ends when the dashboard isn't seen.
-            var limit = GetLimit(session) is TimeSpan length ? session.ClockInTime + length : DateTime.MaxValue;
+            var limit = GetEndTime(session) ?? DateTime.MaxValue;
 
             if (session.LastSeenTime is DateTime lastSeen)
             {
-                if (now - lastSeen > HeartbeatGracePeriod)
+                // Away over lunch (laptop closed at 3:00, back at 4:00) doesn't end the session.
+                if (WorkTime(lastSeen, now) > HeartbeatGracePeriod)
                 {
                     return lastSeen < limit ? lastSeen : limit;
                 }
@@ -117,7 +165,7 @@ namespace F9SDMS.Services
             return sessionToResume;
         }
 
-        /// <summary>Regular (not overtime) time clocked in sessions that started on <paramref name="date"/>.</summary>
+        /// <summary>Regular (not overtime) time clocked in sessions that started on <paramref name="date"/>, lunch excluded.</summary>
         public static async Task<TimeSpan> GetRegularTimeAsync(ApplicationDbContext db, string employeeId, DateTime date, DateTime now)
         {
             var day = date.Date;
@@ -130,8 +178,7 @@ namespace F9SDMS.Services
             var total = TimeSpan.Zero;
             foreach (var s in sessions)
             {
-                var end = s.ClockOutTime ?? now;
-                if (end > s.ClockInTime) total += end - s.ClockInTime;
+                total += WorkTime(s.ClockInTime, s.ClockOutTime ?? now);
             }
             return total;
         }
