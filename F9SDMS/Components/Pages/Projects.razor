@@ -12,6 +12,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IAppClock Clock
 @inject ILogger<Projects> Logger
+@inject CheckFileStore CheckFiles
 
 <PageTitle>Projects – F9SDMS</PageTitle>
 
@@ -133,6 +134,11 @@
                     </tbody>
                 </table>
             </div>
+
+            @if (pageMessage is not null)
+            {
+                <div class="rq-message" role="status">@pageMessage</div>
+            }
 
             @if (!loaded)
             {
@@ -390,6 +396,31 @@
                         }
                     </div>
 
+                    @if (isAdmin && editor.Id != 0)
+                    {
+                        <div class="pd-delete">
+                            @if (!confirmingDelete)
+                            {
+                                <button type="button" class="pd-delete-link" @onclick="StartDelete">Delete this project…</button>
+                            }
+                            else
+                            {
+                                <div class="pd-delete-box">
+                                    <strong>Delete @Project.FormatCode(editor.Id) permanently?</strong>
+                                    <span>This removes the project with all its sub-categories, tasks, logged hours, check submissions and PDFs. It can't be undone. Use it for test projects only.</span>
+                                    <label for="pDeleteCode">Type <b>@Project.FormatCode(editor.Id)</b> to confirm</label>
+                                    <input id="pDeleteCode" class="form-input" autocomplete="off" @bind="deleteCodeInput" @bind:event="oninput" />
+                                    <div class="pd-delete-actions">
+                                        <button type="button" class="modal-btn-cancel" @onclick="() => confirmingDelete = false">Keep project</button>
+                                        <button type="button" class="pd-delete-btn" disabled="@(isSaving || !string.Equals(deleteCodeInput.Trim(), Project.FormatCode(editor.Id), StringComparison.OrdinalIgnoreCase))" @onclick="DeleteProject">
+                                            @(isSaving ? "Deleting..." : "Delete project")
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
                     <div class="project-modal-footer">
                         <button type="button" class="modal-btn-cancel" @onclick="CloseEditor">Cancel</button>
                         <button type="button" class="modal-btn-confirm" @onclick="SaveProject" disabled="@isSaving">
@@ -423,11 +454,16 @@
     private string? formError;
     private bool isSaving;
     private string? currentUserId;
+    private bool isAdmin;
+    private bool confirmingDelete;
+    private string deleteCodeInput = "";
+    private string? pageMessage;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         currentUserId = UserManager.GetUserId(authState.User);
+        isAdmin = authState.User.IsInRole("Admin");
         await LoadAsync();
     }
 
@@ -680,8 +716,45 @@
     private static string FormatHours(TimeSpan span) =>
         $"{(int)span.TotalHours:D2}:{span.Minutes:D2}";
 
+    private void StartDelete()
+    {
+        confirmingDelete = true;
+        deleteCodeInput = "";
+    }
+
+    /// <summary>Admins only: permanently deletes the project being edited (after typing its code).</summary>
+    private async Task DeleteProject()
+    {
+        if (editor is null || editor.Id == 0 || !isAdmin) return;
+        if (!string.Equals(deleteCodeInput.Trim(), Project.FormatCode(editor.Id), StringComparison.OrdinalIgnoreCase)) return;
+
+        isSaving = true;
+        formError = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var result = await ProjectDeletion.DeleteAsync(db, CheckFiles, editor.Id, Clock.Now);
+            editor = null;
+            confirmingDelete = false;
+            pageMessage = result is null
+                ? "That project was already deleted."
+                : $"Deleted {result.Code} · {result.Sample} ({result.Tasks} tasks, {result.TimeEntries} time entries, {result.Checks} check submissions).";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Deleting project {ProjectId} failed.", editor?.Id);
+            formError = "Couldn't delete the project. It wasn't deleted, please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
     private void CloseEditor()
     {
+        confirmingDelete = false;
         editor = null;
         formError = null;
     }

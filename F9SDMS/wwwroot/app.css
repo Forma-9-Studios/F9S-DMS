@@ -2539,6 +2539,20 @@ textarea.rq-input { resize: vertical; }
 .dark-mode .ae-alert { background: rgba(229, 115, 107, 0.1); border-color: rgba(229, 115, 107, 0.3); color: #f09a93; }
 .dark-mode .ae-error { color: #f09a93; }
 
+/* ---------- Delete project (Projects > Edit, admins) ---------- */
+.pd-delete { padding: 0 24px 4px; }
+.pd-delete-link { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: #b3413a; text-decoration: underline; cursor: pointer; }
+.pd-delete-box { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 10px; background: rgba(179, 65, 58, 0.06); border: 1px solid rgba(179, 65, 58, 0.3); font-size: 13px; line-height: 1.5; color: #3a4650; }
+    .pd-delete-box strong { font-size: 14px; color: #8f2f29; }
+    .pd-delete-box label { font-size: 12.5px; font-weight: 600; }
+.pd-delete-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.pd-delete-btn { background: #b3413a; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .pd-delete-btn:hover:not(:disabled) { background: #9a352f; }
+    .pd-delete-btn:disabled { opacity: 0.5; cursor: default; }
+.dark-mode .pd-delete-link { color: #f09a93; }
+.dark-mode .pd-delete-box { background: rgba(229, 115, 107, 0.08); border-color: rgba(229, 115, 107, 0.3); color: #c7d0d6; }
+    .dark-mode .pd-delete-box strong { color: #f09a93; }
+
 /* ---------- Empty states with a next step ---------- */
 .dash-empty-card { display: flex; flex-direction: column; gap: 6px; padding: 22px 22px; border: 1px dashed #c9d3d8; border-radius: 12px; background: #ffffff; font-size: 13.5px; line-height: 1.5; color: #5b6b76; }
     .dash-empty-card strong { font-size: 15px; color: #0c1a27; }
