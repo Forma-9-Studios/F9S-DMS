@@ -141,3 +141,20 @@ f9sdms.toggleTheme = function () {
         });
     });
 })();
+
+// ---- Phones: close the slide-in menu after picking a page ----
+document.addEventListener('click', function (e) {
+    var link = e.target && e.target.closest ? e.target.closest('.sidebar a, .sidebar button') : null;
+    var toggle = document.getElementById('navToggle');
+    if (link && toggle) toggle.checked = false;
+});
+
+// ---- Show / hide password (sign-in and change-password pages) ----
+f9sdms.togglePassword = function (button, inputId) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.classList.toggle('on', show);
+    button.setAttribute('aria-pressed', show ? 'true' : 'false');
+};

@@ -16,9 +16,11 @@
 @inject NavigationManager NavigationManager
 @inject F9SDMS.Services.IAppClock Clock
 
-<PageTitle>Dashboard</PageTitle>
+<PageTitle>Dashboard – F9SDMS</PageTitle>
 
 <div class="dashboard-page">
+    @* Phones: the sidebar becomes a slide-in menu opened by the button in the header (see shared.css). *@
+    <input type="checkbox" id="navToggle" class="nav-toggle" aria-hidden="true" tabindex="-1" />
     <div class="sidebar">
         <img src="/images/f9s-logo.png" alt="Forma 9 Studios" class="sidebar-logo" />
         <div class="sidebar-title">F9SDMS</div>
@@ -84,19 +86,24 @@
         </button>
     </div>
 
+    <label for="navToggle" class="nav-backdrop" aria-hidden="true"></label>
+
     <div class="main-content">
         <div class="header-row">
-            <div>
+            <label for="navToggle" class="nav-burger" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="22" height="22"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg></label>
+            <div class="header-titles">
                 <div class="welcome-text">Welcome back, @employeeName</div>
                 <div class="welcome-date">@todayDate</div>
             </div>
             <div class="header-actions">
+                <div class="header-tools">
                 <NotificationBell />
                 <button type="button" class="theme-toggle-btn" onclick="f9sdms.toggleTheme()" aria-label="Toggle dark mode">
                     <span class="theme-icon-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg></span>
                     <span class="theme-icon-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg></span>
                 </button>
                 <AvatarMenu Initials="@initials" Name="@menuName" Subtitle="@menuSubtitle" />
+                </div>
             </div>
         </div>
 
@@ -122,7 +129,7 @@
 
         @if (!isAdmin)
         {
-            <div class="employee-grid @(myProjects.Count > 0 || toCheck.Count > 0 || returned.Count > 0 ? "has-projects" : "")">
+            <div class="employee-grid has-projects">
             <div class="timer-card">
                 <div class="timer-status">
                     @if (clockInTime.HasValue && isOvertimeSession)
@@ -211,7 +218,7 @@
                                     <div class="status-dropdown-section">To check</div>
                                     @foreach (var item in toCheck)
                                     {
-                                        <div class="status-dropdown-item @(currentCheckId == item.SubmissionId ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="() => StartChecking(item)">
+                                        <div class="status-dropdown-item @(currentCheckId == item.SubmissionId ? "current" : "") @(clockInTime.HasValue ? "" : "disabled")" @onclick="@(() => Switch("checking " + (item.TaskName ?? item.Sample), clockInTime.HasValue && currentCheckId != item.SubmissionId, () => StartChecking(item)))">
                                             @item.Title
                                         </div>
                                     }
@@ -243,7 +250,7 @@
                                                 @foreach (var task in sub.Tasks)
                                                 {
                                                     var taskLocked = ProjectOptions.IsLocked(task.Status);
-                                                    <div class="status-dropdown-item status-dropdown-task @(currentCheckId is null && currentTaskId == task.Id ? "current" : "") @(clockInTime.HasValue && !taskLocked ? "" : "disabled")" @onclick="() => SetProjectStatus(project, sub.Id, task.Id)">
+                                                    <div class="status-dropdown-item status-dropdown-task @(currentCheckId is null && currentTaskId == task.Id ? "current" : "") @(clockInTime.HasValue && !taskLocked ? "" : "disabled")" @onclick="() => Switch(task.Name, clockInTime.HasValue && !taskLocked && !(currentCheckId is null && currentTaskId == task.Id), () => SetProjectStatus(project, sub.Id, task.Id))">
                                                         @task.Name
                                                         @{ var dueKind = F9SDMS.Services.TaskReminders.DueKind(task.Deadline, Clock.Now, task.Status); }
                                                         @if (taskLocked)
@@ -264,7 +271,7 @@
                                         }
                                         else
                                         {
-                                            <div class="status-dropdown-item @(currentCheckId is null && currentProjectId == project.Id && currentSubcategoryId is null ? "current" : "") @(clockInTime.HasValue && !project.Locked ? "" : "disabled")" @onclick="() => SetProjectStatus(project, null, null)">
+                                            <div class="status-dropdown-item @(currentCheckId is null && currentProjectId == project.Id && currentSubcategoryId is null ? "current" : "") @(clockInTime.HasValue && !project.Locked ? "" : "disabled")" @onclick="() => Switch(project.Sample, clockInTime.HasValue && !project.Locked && !(currentCheckId is null && currentProjectId == project.Id && currentSubcategoryId is null), () => SetProjectStatus(project, null, null))">
                                                 @project.Code · @project.Sample
                                                 @if (project.Locked)
                                                 {
@@ -279,7 +286,7 @@
                                     }
                                     <div class="status-dropdown-section">Other</div>
                                 }
-                                <div class="status-dropdown-item @(currentStatus == AvailableStatus ? "current" : "")" @onclick="() => SetStatus(AvailableStatus)">
+                                <div class="status-dropdown-item @(currentStatus == AvailableStatus ? "current" : "")" @onclick="() => Switch(AvailableStatus, true, () => SetStatus(AvailableStatus))">
                                     Available
                                     @if (currentStatus == AvailableStatus)
                                     {
@@ -288,7 +295,7 @@
                                 </div>
                                 @foreach (var preset in presetStatuses)
                                 {
-                                    <div class="status-dropdown-item @(currentStatus == preset ? "current" : "")" @onclick="() => SetStatus(preset)">
+                                    <div class="status-dropdown-item @(currentStatus == preset ? "current" : "")" @onclick="() => Switch(preset, true, () => SetStatus(preset))">
                                         @preset
                                         @if (currentStatus == preset)
                                         {
@@ -300,7 +307,7 @@
                                     <div class="status-dropdown-others-label">Others</div>
                                     <div class="status-dropdown-others-row">
                                         <input class="status-dropdown-input" placeholder="If others, please specify" @bind="customStatusInput" @bind:event="oninput" @onkeydown="HandleStatusKeyDown" />
-                                        <button type="button" class="status-dropdown-send" @onclick="SubmitCustomStatus">
+                                        <button type="button" class="status-dropdown-send" @onclick="RequestCustomStatus">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                         </button>
                                     </div>
@@ -311,6 +318,15 @@
                 </div>
             </div>
 
+            @if (myProjects.Count == 0 && toCheck.Count == 0 && returned.Count == 0)
+            {
+                <div class="my-projects-column">
+                    <div class="dash-empty-card">
+                        <strong>No projects yet</strong>
+                        <span>When your manager adds you to a project, it shows up here. Then use <b>Change status</b> to start tracking time on it.</span>
+                    </div>
+                </div>
+            }
             @if (myProjects.Count > 0 || toCheck.Count > 0 || returned.Count > 0)
             {
                 var tab = ActiveTab;
@@ -361,7 +377,7 @@
                                     }
                                     else
                                     {
-                                        <button type="button" class="dash-row-btn" @onclick="() => WorkOnReturned(item)" @onclick:stopPropagation="true" disabled="@(!clockInTime.HasValue)" title="@(clockInTime.HasValue ? "Set your status to this task" : "Clock in to work on it")">Work on it</button>
+                                        <button type="button" class="dash-row-btn" @onclick="() => Switch(item.TaskName ?? item.PartName ?? item.Sample, true, () => WorkOnReturned(item))" @onclick:stopPropagation="true" disabled="@(!clockInTime.HasValue)" title="@(clockInTime.HasValue ? "Set your status to this task" : "Clock in to work on it")">Work on it</button>
                                     }
                                     <span class="dash-chevron @(isOpen ? "open" : "")" aria-hidden="true">›</span>
                                 </div>
@@ -387,7 +403,7 @@
                 }
                 else if (tab == TabCheck)
                 {
-                    <CheckQueueList Items="toCheck" CurrentCheckId="currentCheckId" ShowStart="true" CanStart="clockInTime.HasValue" OnStart="StartChecking" OnReview="OpenReview" />
+                    <CheckQueueList Items="toCheck" CurrentCheckId="currentCheckId" ShowStart="true" CanStart="clockInTime.HasValue" OnStart="@((F9SDMS.Services.CheckQueueItem q) => Switch("checking " + (q.TaskName ?? q.Sample), currentCheckId != q.SubmissionId, () => StartChecking(q)))" OnReview="OpenReview" />
                 }
                 else
                 {
@@ -559,6 +575,10 @@
                                     <div class="name-cell">
                                         <div class="row-avatar">@GetInitials(emp.FirstName, emp.LastName)</div>
                                         <span>@emp.FirstName @emp.LastName</span>
+                                        @if (emp.IsLocked)
+                                        {
+                                            <span class="acct-badge acct-badge-locked">Locked</span>
+                                        }
                                         @if (emp.DeactivatedAt is DateTime off)
                                         {
                                             <span class="acct-badge">Deactivated @off.ToString("MMM d, yyyy")</span>
@@ -582,6 +602,20 @@
         }
         </div>
     </div>
+
+    @if (switchAction is not null)
+    {
+        <div class="modal-overlay">
+            <div class="modal-card" role="dialog" aria-labelledby="switchTitle">
+                <div class="modal-title" id="switchTitle">Stop working on @BusyLabel?</div>
+                <div class="modal-body">Your time on <strong>@BusyLabel</strong> stops now and your status changes to <strong>@switchTo</strong>.</div>
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn-cancel" @onclick="CancelSwitch">Keep working</button>
+                    <button type="button" class="modal-btn-confirm" @onclick="ConfirmSwitch">Switch</button>
+                </div>
+            </div>
+        </div>
+    }
 
     @if (showLogoutConfirm)
     {
@@ -648,6 +682,13 @@
 
                 <div class="acct-section">
                     <div class="acct-title">Account access</div>
+                    @if (editingEmployee.LockoutEnd is DateTimeOffset lockedUntil && lockedUntil > DateTimeOffset.UtcNow)
+                    {
+                        <div class="acct-locked">
+                            <span>Locked after too many wrong passwords, until @lockedUntil.ToLocalTime().ToString("h:mm tt").</span>
+                            <button type="button" class="modal-btn-cancel" disabled="@isSavingEdit" @onclick="UnlockEmployee">Unlock now</button>
+                        </div>
+                    }
                     @if (editingEmployee.Id == currentUserId)
                     {
                         <span class="reset-hint">You can't deactivate or delete your own account.</span>
@@ -827,11 +868,51 @@
 
     private const string AvailableStatus = "Available";
 
+    // Switching away from project work or checking asks first, so a stray click doesn't stop the timer.
+    private Func<Task>? switchAction;
+    private string switchTo = "";
+
+    private bool IsBusy => currentProjectId is not null || currentCheckId is not null;
+
+    private string BusyLabel => currentCheckId is not null
+        ? "checking"
+        : CurrentTask?.Name ?? CurrentProject?.Sample ?? "your current project";
+
+    /// <summary>
+    /// Runs <paramref name="action"/>, or asks first when the person is working on a project or
+    /// checking. <paramref name="enabled"/> is false for disabled or already-selected items.
+    /// </summary>
+    private async Task Switch(string to, bool enabled, Func<Task> action)
+    {
+        if (!enabled || !IsBusy)
+        {
+            await action();
+            return;
+        }
+        switchTo = to;
+        switchAction = action;
+        showStatusDropdown = false;
+    }
+
+    private async Task ConfirmSwitch()
+    {
+        var action = switchAction;
+        switchAction = null;
+        if (action is not null) await action();
+    }
+
+    private void CancelSwitch() => switchAction = null;
+
+    private Task RequestCustomStatus() =>
+        string.IsNullOrWhiteSpace(customStatusInput)
+            ? Task.CompletedTask
+            : Switch(customStatusInput.Trim(), true, SubmitCustomStatus);
+
     private async Task HandleStatusKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {
-            await SubmitCustomStatus();
+            await RequestCustomStatus();
         }
     }
 
@@ -840,6 +921,7 @@
         ["Available"] = "status-available",
         ["Assist Colleague"] = "status-assist",
         ["Break"] = "status-break",
+        [F9SDMS.Services.LunchBreakService.LunchStatus] = "status-break",
         ["Email"] = "status-email",
         ["Idle"] = "status-idle",
         ["IT Maintenance"] = "status-it",
@@ -1187,7 +1269,7 @@
 
             var allUsers = await db.Users
                 .AsNoTracking()
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId, u.DeactivatedAt })
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId, u.DeactivatedAt, u.LockoutEnd })
                 .ToListAsync();
 
             var userRoles = await (from ur in db.UserRoles
@@ -1209,7 +1291,8 @@
                 Role = rolesByUser.TryGetValue(u.Id, out var role) && role is not null ? role : "Employee",
                 Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus,
                 CurrentProjectId = u.CurrentProjectId,
-                DeactivatedAt = u.DeactivatedAt
+                DeactivatedAt = u.DeactivatedAt,
+                IsLocked = u.LockoutEnd is DateTimeOffset end && end > DateTimeOffset.UtcNow
             }).ToList();
 
             var activeIds = await db.AttendanceSessions
@@ -1567,6 +1650,31 @@
         }
     }
 
+    /// <summary>Lifts a lockout from too many wrong passwords, so they can try again right away.</summary>
+    private async Task UnlockEmployee()
+    {
+        if (editingEmployee is null || !isAdmin) return;
+        isSavingEdit = true;
+        try
+        {
+            await CircuitDb.Entry(editingEmployee).ReloadAsync();
+            await UserManager.SetLockoutEndDateAsync(editingEmployee, null);
+            await UserManager.ResetAccessFailedCountAsync(editingEmployee);
+            editSucceeded = true;
+            editStatusMessage = $"{editingEmployee.FirstName} can sign in again.";
+            await LoadEmployees();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unlocking an employee failed.");
+            ShowEditError("Couldn't unlock the account. Please try again.");
+        }
+        finally
+        {
+            isSavingEdit = false;
+        }
+    }
+
     private async Task ReactivateEmployee()
     {
         if (editingEmployee is null || !isAdmin) return;
@@ -1821,6 +1929,7 @@
         public int? CurrentProjectId { get; set; }
         public DateTime? DeactivatedAt { get; set; }
         public bool IsActive => DeactivatedAt is null;
+        public bool IsLocked { get; set; }
     }
 
     private class MyProject

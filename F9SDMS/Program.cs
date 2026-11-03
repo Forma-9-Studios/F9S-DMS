@@ -21,6 +21,7 @@ builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddHostedService<StaleSessionCleanupService>();
 builder.Services.AddHostedService<DeadlineReminderService>();
+builder.Services.AddHostedService<LunchBreakService>();
 builder.Services.AddSingleton<IAppClock, AppClock>();
 builder.Services.AddSingleton<CheckFileStore>();
 builder.Services.AddSingleton<TicketFileStore>();

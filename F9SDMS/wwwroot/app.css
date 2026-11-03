@@ -2238,6 +2238,9 @@ textarea.rq-input { resize: vertical; }
 }
 
     .pw-toggle.on { color: #098993; }
+.pw-eye-off { display: none; }
+.on > .pw-eye { display: none; }
+.on > .pw-eye-off { display: inline; }
 
 .pw-field-error { font-size: 13px; }
 
@@ -2292,6 +2295,10 @@ textarea.rq-input { resize: vertical; }
 .acct-inactive-row td { color: #7a8892 !important; }
 .acct-empty { text-align: center; color: #7a8892 !important; padding: 22px !important; }
 .acct-message { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; background: rgba(9, 137, 147, 0.08); color: #076c74; font-size: 13.5px; font-weight: 600; }
+.acct-locked { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(240, 201, 106, 0.16); border: 1px solid rgba(201, 150, 40, 0.35); font-size: 13px; color: #7a5a14; }
+.acct-badge-locked { background: rgba(240, 201, 106, 0.25); color: #8a6414; }
+.dark-mode .acct-locked { background: rgba(240, 201, 106, 0.1); border-color: rgba(240, 201, 106, 0.3); color: #f0c96a; }
+.dark-mode .acct-badge.acct-badge-locked { background: rgba(240, 201, 106, 0.15); color: #f0c96a; }
 .dark-mode .acct-section { border-top-color: #223244; }
 .dark-mode .acct-title { color: #e8edf0; }
 .dark-mode .acct-confirm { background: rgba(229, 115, 107, 0.08); border-color: rgba(229, 115, 107, 0.3); color: #c7d0d6; }
@@ -2531,3 +2538,11 @@ textarea.rq-input { resize: vertical; }
 .dark-mode .ae-done-icon { background: rgba(59, 179, 107, 0.15); color: #6fd39a; }
 .dark-mode .ae-alert { background: rgba(229, 115, 107, 0.1); border-color: rgba(229, 115, 107, 0.3); color: #f09a93; }
 .dark-mode .ae-error { color: #f09a93; }
+
+/* ---------- Empty states with a next step ---------- */
+.dash-empty-card { display: flex; flex-direction: column; gap: 6px; padding: 22px 22px; border: 1px dashed #c9d3d8; border-radius: 12px; background: #ffffff; font-size: 13.5px; line-height: 1.5; color: #5b6b76; }
+    .dash-empty-card strong { font-size: 15px; color: #0c1a27; }
+.rq-empty-hint { display: block; margin-top: 4px; font-size: 13px; color: #7a8892; line-height: 1.5; }
+.dark-mode .dash-empty-card { background: #131f2e; border-color: #2c4356; color: #8b98a3; }
+    .dark-mode .dash-empty-card strong { color: #e8edf0; }
+.dark-mode .rq-empty-hint { color: #8b98a3; }

@@ -15,7 +15,7 @@
 @inject IAppClock Clock
 @inject ILogger<TicketDetails> Logger
 
-<PageTitle>@(ticket is null ? "Ticket" : $"{ticket.Code} · {ticket.Subject}")</PageTitle>
+<PageTitle>@(ticket is null ? "Ticket" : $"{ticket.Code} · {ticket.Subject}") – F9SDMS</PageTitle>
 
 <AppShell Active="it"
           Title="@(ticket is null ? "Ticket" : $"{ticket.Code} · {ticket.Subject}")"

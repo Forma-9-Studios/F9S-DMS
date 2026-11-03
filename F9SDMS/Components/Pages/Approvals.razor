@@ -14,7 +14,7 @@
 @inject IAppClock Clock
 @inject ILogger<Approvals> Logger
 
-<PageTitle>Approvals</PageTitle>
+<PageTitle>Approvals – F9SDMS</PageTitle>
 
 <AppShell Active="approvals" Title="Approvals" PendingCount="pendingTotal"
           Subtitle="@(view == "balances" ? $"Leave balances for {Clock.Now.Year}, earned monthly from each employee's start date." : "Overtime and leave requests from everyone. Any manager or admin can decide.")">
@@ -124,7 +124,17 @@
                 }
                 else if (!FilteredRows.Any())
                 {
-                    <div class="rq-empty">@(statusFilter == RequestOptions.StatusPending ? "Nothing waiting for approval." : $"No {statusFilter.ToLower()} requests.")</div>
+                    <div class="rq-empty">
+                        @if (statusFilter == RequestOptions.StatusPending)
+                        {
+                            <strong>Nothing waiting for approval.</strong>
+                            <span class="rq-empty-hint">When someone files overtime or leave on their Requests page, it shows up here, and the number next to Approvals in the menu goes up.</span>
+                        }
+                        else
+                        {
+                            @($"No {statusFilter.ToLower()} requests.")
+                        }
+                    </div>
                 }
             </section>
 

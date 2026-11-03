@@ -136,3 +136,84 @@
     .dashboard-page.dark-mode .modal-btn-cancel:hover {
         background: #1c3040;
     }
+
+/* ---------- Phones and small tablets ----------
+   The sidebar turns into a slide-in menu (opened by the button in the header), the page scrolls
+   normally, and wide layouts stack into one column. Loaded after the page styles so these win. */
+.nav-toggle { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+.nav-burger, .nav-backdrop { display: none; }
+.page-actions, .header-tools { display: flex; align-items: center; gap: 14px; }
+
+@media (max-width: 900px) {
+    :is(.app-page, .dashboard-page) { display: block; height: auto; min-height: 100vh; overflow: visible; }
+
+    :is(.app-page, .dashboard-page) > .sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0; z-index: 200;
+        width: 260px; height: 100%;
+        transform: translateX(-100%); transition: transform 0.2s ease;
+        box-shadow: none;
+    }
+    .nav-toggle:checked ~ .sidebar { transform: translateX(0); box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35); }
+    .nav-toggle:checked ~ .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 150; background: rgba(12, 26, 39, 0.55); }
+
+    :is(.app-page, .dashboard-page) > .main-content { height: auto; overflow: visible; padding: 16px 16px 32px; }
+
+    /* Header: menu button and bell/theme/avatar on top, the title under them, then the page's
+       own buttons (New ticket, File leave...) in a full-width row. */
+    :is(.app-page, .dashboard-page) .header-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; margin-bottom: 18px; }
+    :is(.app-page, .dashboard-page) .header-row > .nav-burger { grid-column: 1; grid-row: 1; }
+    :is(.app-page, .dashboard-page) .header-actions { display: contents; }
+    :is(.app-page, .dashboard-page) .header-tools { grid-column: 2; grid-row: 1; justify-self: end; gap: 8px; }
+    :is(.app-page, .dashboard-page) .header-row > .header-titles { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+    :is(.app-page, .dashboard-page) .page-actions { grid-column: 1 / -1; grid-row: 3; flex-wrap: wrap; gap: 8px; }
+        :is(.app-page, .dashboard-page) .page-actions > * { flex: 1 1 0; justify-content: center; min-width: 0; }
+    :is(.app-page, .dashboard-page) :is(.page-title, .welcome-text) { font-size: 19px; line-height: 1.25; }
+    :is(.app-page, .dashboard-page) :is(.page-subtitle, .welcome-date) { font-size: 12.5px; }
+    :is(.app-page, .dashboard-page) .avatar { width: 38px; height: 38px; font-size: 13px; }
+
+    .nav-burger {
+        display: inline-flex; align-items: center; justify-content: center; flex: none;
+        width: 40px; height: 40px; border-radius: 10px; cursor: pointer;
+        border: 1px solid #dde3e5; background: #ffffff; color: #0c1a27;
+    }
+    .dark-mode .nav-burger { background: #131f2e; border-color: #223244; color: #e8edf0; }
+
+    /* Dialogs fit the screen and scroll if they're tall. */
+    :is(.app-page, .dashboard-page) :is(.modal-card, .edit-card) { width: auto; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow-y: auto; padding: 22px 18px; box-sizing: border-box; }
+    :is(.app-page, .dashboard-page) .modal-overlay { padding: 12px; }
+
+    /* Notifications open full width under the header. */
+    .notif-panel { position: fixed; top: 64px; left: 12px; right: 12px; width: auto; max-width: none; }
+
+    /* Tabs scroll sideways instead of wrapping into several rows. */
+    .home-tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px 18px; padding: 0 16px 4px; scrollbar-width: none; }
+        .home-tabs::-webkit-scrollbar { display: none; }
+    .home-tab { flex: none; }
+
+    /* Tables scroll sideways inside their card instead of stretching the page. */
+    :is(.app-page, .dashboard-page) :is(.employees-table, .rq-table, .projects-table, .log-table) { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+
+    /* Overview and team pages */
+    .ov-hp-row { grid-template-columns: minmax(0, 1fr) 64px; row-gap: 6px; }
+        .ov-hp-row .ov-proj-name { grid-column: 1 / -1; }
+    .ov-person { grid-template-columns: 96px minmax(0, 1fr) 56px; gap: 10px; }
+    .ov-deadline { grid-template-columns: 70px minmax(0, 1fr); }
+        .ov-deadline > :last-child { grid-column: 2; }
+    .ov-days { gap: 6px; }
+    .ov-day-label { font-size: 10.5px; }
+    .tm-drawer { width: 100%; max-width: 100%; }
+    .team-columns { grid-template-columns: 1fr; }
+    .team-member { grid-template-columns: minmax(0, 1fr) 130px; }
+    .rq-card, .ov-card { padding-left: 14px; padding-right: 14px; }
+
+    /* Requests: the four summary tiles sit two per row. */
+    .rq-tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .rq-tile { padding: 12px 14px; }
+}
+
+@media (max-width: 480px) {
+    .ov-kpis { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ov-kpi-value { font-size: 22px; }
+    .ae-actions, :is(.app-page, .dashboard-page) .modal-actions { flex-wrap: wrap; }
+        .ae-actions > *, :is(.app-page, .dashboard-page) .modal-actions > * { flex: 1 1 auto; justify-content: center; text-align: center; }
+}

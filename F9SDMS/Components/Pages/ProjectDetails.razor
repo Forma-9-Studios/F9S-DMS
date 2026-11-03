@@ -14,7 +14,7 @@
 @inject ILogger<ProjectDetails> Logger
 @inject IJSRuntime JS
 
-<PageTitle>@(project is null ? "Project" : $"{project.Code} · {project.Sample}")</PageTitle>
+<PageTitle>@(project is null ? "Project" : $"{project.Code} · {project.Sample}") – F9SDMS</PageTitle>
 
 <AppShell Active="@(isManagerView ? "projects" : "dashboard")"
           Title="@(project is null ? "Project" : $"{project.Code} · {project.Sample}")"

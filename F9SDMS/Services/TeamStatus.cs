@@ -159,7 +159,7 @@ namespace F9SDMS.Services
                         var status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus;
                         stateKey = status switch
                         {
-                            "Break" => "break",
+                            "Break" or LunchBreakService.LunchStatus => "break",
                             "Meeting" => "meet",
                             _ => "other"
                         };
