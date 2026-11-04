@@ -19,7 +19,7 @@
             <div class="ov-card ov-kpi">
                 <span class="ov-kpi-label">Active projects</span>
                 <span class="ov-kpi-value">@projects.Count</span>
-                <span class="ov-kpi-sub">@DueThisMonth due this month</span>
+                <span class="ov-kpi-sub">@DueThisMonth due this month · @completed.Count completed</span>
             </div>
             <div class="ov-card ov-kpi">
                 <span class="ov-kpi-label">Tasks approved</span>
@@ -47,14 +47,46 @@
             <section class="ov-card">
                 <div class="ov-card-head">
                     <h2>Project progress</h2>
-                    <div class="ov-legend">
-                        <span><i class="ov-sw ov-bg-green"></i>Approved</span>
-                        <span><i class="ov-sw ov-bg-purple"></i>In checking</span>
-                        <span><i class="ov-sw ov-bg-teal"></i>In progress</span>
-                        <span><i class="ov-sw ov-bg-grey"></i>Not started</span>
+                    <div class="ov-head-tools">
+                        @if (progressTab == "active")
+                        {
+                            <div class="ov-legend">
+                                <span><i class="ov-sw ov-bg-green"></i>Approved</span>
+                                <span><i class="ov-sw ov-bg-purple"></i>In checking</span>
+                                <span><i class="ov-sw ov-bg-teal"></i>In progress</span>
+                                <span><i class="ov-sw ov-bg-grey"></i>Not started</span>
+                            </div>
+                        }
+                        <div class="ov-seg" role="tablist" aria-label="Projects">
+                            <button type="button" role="tab" aria-selected="@(progressTab == "active" ? "true" : "false")" class="ov-seg-btn @(progressTab == "active" ? "active" : "")" @onclick="@(() => progressTab = "active")">Active (@projects.Count)</button>
+                            <button type="button" role="tab" aria-selected="@(progressTab == "completed" ? "true" : "false")" class="ov-seg-btn @(progressTab == "completed" ? "active" : "")" @onclick="@(() => progressTab = "completed")">Completed (@completed.Count)</button>
+                        </div>
                     </div>
                 </div>
-                @if (projects.Count == 0)
+                @if (progressTab == "completed")
+                {
+                    @if (completed.Count == 0)
+                    {
+                        <div class="ov-empty">No completed projects yet. Projects marked Completed show up here.</div>
+                    }
+                    else
+                    {
+                        <div class="ov-done ov-done-head" aria-hidden="true">
+                            <span>Project</span><span>Tasks</span><span>Hours</span><span>Last activity</span><span>PM</span>
+                        </div>
+                        @foreach (var c in completed)
+                        {
+                            <a href="/projects/@c.Id" class="ov-done">
+                                <span class="ov-proj-name"><span class="ov-code">@c.Code</span><strong>@c.Sample</strong></span>
+                                <span>@(c.Tasks == 0 ? "—" : $"{c.Approved} of {c.Tasks} approved")</span>
+                                <span><strong>@Hours(c.Hours)</strong></span>
+                                <span class="ov-muted">@(c.LastActivity?.ToString("MMM d, yyyy") ?? "—")</span>
+                                <span class="ov-pm">@c.ManagerName</span>
+                            </a>
+                        }
+                    }
+                }
+                else if (projects.Count == 0)
                 {
                     <div class="ov-empty">No active projects.</div>
                 }
@@ -136,7 +168,7 @@
                 </div>
                 @{
                     var periodRows = projectHours
-                        .Select(p => (p.Id, p.Code, p.Sample, Hours: p.For(projectPeriod)))
+                        .Select(p => (p.Id, p.Code, p.Sample, p.Completed, Hours: p.For(projectPeriod)))
                         .Where(p => (p.Hours.Modeling + p.Hours.Checking).TotalMinutes >= 1)
                         .OrderByDescending(p => p.Hours.Modeling + p.Hours.Checking)
                         .ToList();
@@ -144,14 +176,14 @@
                 }
                 @if (periodRows.Count == 0)
                 {
-                    <div class="ov-empty">No hours logged on active projects @(projectPeriod == "week" ? "this week" : projectPeriod == "month" ? "this month" : "yet").</div>
+                    <div class="ov-empty">No hours logged on projects @(projectPeriod == "week" ? "this week" : projectPeriod == "month" ? "this month" : "yet").</div>
                 }
                 else
                 {
                     @foreach (var p in periodRows)
                     {
                         <a href="/projects/@p.Id" class="ov-hp-row" title="Modeling @Hours(p.Hours.Modeling) · Checking @Hours(p.Hours.Checking)">
-                            <span class="ov-proj-name"><span class="ov-code">@p.Code</span><strong>@p.Sample</strong></span>
+                            <span class="ov-proj-name"><span class="ov-code">@p.Code @if (p.Completed) { <span class="ov-done-tag">Completed</span> }</span><strong>@p.Sample</strong></span>
                             <span class="ov-bar ov-bar-thick ov-bar-square">
                                 <span class="ov-bg-teal" style="width: @Num(p.Hours.Modeling.TotalHours / projectMax * 100)%"></span>
                                 <span class="ov-bg-purple" style="width: @Num(p.Hours.Checking.TotalHours / projectMax * 100)%"></span>
@@ -266,7 +298,11 @@
     private sealed record Stage(string Name, string Css, int Count);
     private sealed record Person(string FirstName, string Initials, string Status, TimeSpan Modeling, TimeSpan Checking);
 
-    private sealed record ProjectHours(int Id, string Code, string Sample,
+    private sealed record CompletedRow(int Id, string Code, string Sample, int Tasks, int Approved, TimeSpan Hours, DateTime? LastActivity, string ManagerName);
+    private List<CompletedRow> completed = new();
+    private string progressTab = "active";
+
+    private sealed record ProjectHours(int Id, string Code, string Sample, bool Completed,
         (TimeSpan Modeling, TimeSpan Checking) Week, (TimeSpan Modeling, TimeSpan Checking) Month, (TimeSpan Modeling, TimeSpan Checking) All)
     {
         public (TimeSpan Modeling, TimeSpan Checking) For(string period) => period switch
@@ -497,23 +533,55 @@
                     onDay.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)));
             }).ToList();
 
-            // Hours per active project: this week, this month and all time.
+            // Hours per project (active and completed): this week, this month and all time.
             var monthStart = new DateTime(today.Year, today.Month, 1);
             var projectEntries = await db.ProjectTimeEntries.AsNoTracking()
-                .Where(t => activeIds.Contains(t.ProjectId))
                 .Select(t => new { t.ProjectId, t.WorkType, t.StartTime, t.EndTime })
+                .ToListAsync();
+            var finished = await db.Projects.AsNoTracking()
+                .Where(p => p.Status == ProjectOptions.StatusCompleted)
+                .Select(p => new { p.Id, p.Sample, p.ManagerId, p.CreatedById })
+                .ToListAsync();
+            var finishedIds = finished.Select(p => p.Id).ToList();
+            var finishedTasks = await db.ProjectTasks.AsNoTracking()
+                .Where(t => finishedIds.Contains(t.ProjectId) && !t.IsArchived)
+                .Select(t => new { t.ProjectId, t.Status })
+                .ToListAsync();
+            var finishedChecks = await db.CheckSubmissions.AsNoTracking()
+                .Where(c => finishedIds.Contains(c.ProjectId))
+                .Select(c => new { c.ProjectId, c.SubmittedAt, c.ResultAt })
                 .ToListAsync();
             (TimeSpan, TimeSpan) Split(IEnumerable<(string WorkType, DateTime StartTime, DateTime? EndTime)> list) =>
                 (list.Where(e => !IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)),
                  list.Where(e => IsChecking(e.WorkType)).Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)));
-            projectHours = active.Select(p =>
+            ProjectHours HoursFor(int id, string sample, bool isCompleted)
             {
-                var mine = projectEntries.Where(e => e.ProjectId == p.Id).Select(e => (e.WorkType, e.StartTime, e.EndTime)).ToList();
-                return new ProjectHours(p.Id, p.Code, p.Sample,
+                var mine = projectEntries.Where(e => e.ProjectId == id).Select(e => (e.WorkType, e.StartTime, e.EndTime)).ToList();
+                return new ProjectHours(id, Project.FormatCode(id), sample, isCompleted,
                     Split(mine.Where(e => e.StartTime >= monday)),
                     Split(mine.Where(e => e.StartTime >= monthStart)),
                     Split(mine));
-            }).ToList();
+            }
+            projectHours = active.Select(p => HoursFor(p.Id, p.Sample, false))
+                .Concat(finished.Select(p => HoursFor(p.Id, p.Sample, true)))
+                .ToList();
+
+            // Completed projects, most recently active first.
+            completed = finished.Select(p =>
+            {
+                var entries = projectEntries.Where(e => e.ProjectId == p.Id).ToList();
+                var lastEntry = entries.Select(e => (DateTime?)(e.EndTime ?? e.StartTime)).DefaultIfEmpty().Max();
+                var lastCheck = finishedChecks.Where(c => c.ProjectId == p.Id).Select(c => (DateTime?)(c.ResultAt ?? c.SubmittedAt)).DefaultIfEmpty().Max();
+                var last = lastEntry > lastCheck || lastCheck is null ? lastEntry : lastCheck;
+                var tasks = finishedTasks.Where(t => t.ProjectId == p.Id).ToList();
+                var managerId = p.ManagerId ?? p.CreatedById;
+                return new CompletedRow(p.Id, Project.FormatCode(p.Id), p.Sample, tasks.Count,
+                    tasks.Count(t => t.Status == ProjectOptions.StatusApproved),
+                    entries.Aggregate(TimeSpan.Zero, (s, e) => s + Length(e.StartTime, e.EndTime)),
+                    last, managerId is null ? "—" : First(managerId));
+            })
+            .OrderByDescending(c => c.LastActivity ?? DateTime.MinValue)
+            .ToList();
 
             var people = await db.Users.AsNoTracking()
                 .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus })

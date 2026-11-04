@@ -2539,6 +2539,20 @@ textarea.rq-input { resize: vertical; }
 .dark-mode .ae-alert { background: rgba(229, 115, 107, 0.1); border-color: rgba(229, 115, 107, 0.3); color: #f09a93; }
 .dark-mode .ae-error { color: #f09a93; }
 
+/* ---------- Overview: completed projects ---------- */
+.ov-done { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 80px 120px 96px; gap: 14px; align-items: center; padding: 11px 6px; border-bottom: 1px solid #eef1f2; color: inherit; text-decoration: none; font-size: 13px; }
+    a.ov-done:hover { background: #f6f8f9; }
+.ov-done-head { padding-top: 8px; padding-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #7a8892; }
+.ov-done-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(29, 122, 69, 0.12); color: #1d7a45; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; vertical-align: 1px; }
+.dark-mode .ov-done { border-bottom-color: #1c2c3d; }
+.dark-mode a.ov-done:hover { background: #16263a; }
+.dark-mode .ov-done-tag { background: rgba(111, 211, 154, 0.15); color: #6fd39a; }
+@media (max-width: 900px) {
+    .ov-done { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+        .ov-done > :nth-child(n+2) { font-size: 12px; }
+    .ov-done-head { display: none; }
+}
+
 /* ---------- Delete project (Projects > Edit, admins) ---------- */
 .pd-delete { padding: 0 24px 4px; }
 .pd-delete-link { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: #b3413a; text-decoration: underline; cursor: pointer; }
