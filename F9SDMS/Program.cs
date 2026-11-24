@@ -13,7 +13,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    // Profile photos are sent from the browser after cropping (a small JPEG, up to ~500 KB).
+    .AddHubOptions(options => options.MaximumReceiveMessageSize = 1024 * 1024);
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
@@ -25,6 +27,7 @@ builder.Services.AddHostedService<LunchBreakService>();
 builder.Services.AddSingleton<IAppClock, AppClock>();
 builder.Services.AddSingleton<CheckFileStore>();
 builder.Services.AddSingleton<TicketFileStore>();
+builder.Services.AddSingleton<ProfilePhotos>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -320,6 +323,17 @@ app.MapGet("/tickets/file/{id:int}", async (int id, HttpContext http, Applicatio
     http.Response.Headers.ContentDisposition = disposition.ToString();
     http.Response.Headers["X-Content-Type-Options"] = "nosniff";
     return Results.File(path, contentType, enableRangeProcessing: true);
+}).RequireAuthorization();
+
+// Profile photos: anyone signed in can see them (they show on team boards and lists).
+app.MapGet("/photos/{userId}", (string userId, HttpContext http, ProfilePhotos photos) =>
+{
+    var path = photos.GetPath(userId);
+    if (path is null) return Results.NotFound();
+    // The address carries ?v=<when it changed>, so browsers can keep it for a long time.
+    http.Response.Headers.CacheControl = "private, max-age=604800";
+    http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    return Results.File(path, "image/jpeg");
 }).RequireAuthorization();
 
 app.Run();

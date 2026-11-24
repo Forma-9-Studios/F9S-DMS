@@ -35,7 +35,7 @@
                     var team = people.Where(p => p.TeamManagerId == manager.Id).OrderBy(p => p.Name).ToList();
                     <section class="rq-card team-column">
                         <div class="team-column-head">
-                            <span class="rq-avatar">@manager.Initials</span>
+                            @if (manager.PhotoUrl is not null) { <img class="rq-avatar avatar-photo" src="@manager.PhotoUrl" alt="" /> } else { <span class="rq-avatar">@manager.Initials</span> }
                             <span>
                                 <strong>@manager.Name</strong>
                                 <span class="rq-muted">Manager · @team.Count @(team.Count == 1 ? "member" : "members")</span>
@@ -75,7 +75,7 @@
 </AppShell>
 
 @code {
-    private sealed record Person(string Id, string Name, string Initials, string Role, string? TeamManagerId);
+    private sealed record Person(string Id, string Name, string Initials, string Role, string? TeamManagerId, string? PhotoUrl = null);
 
     private bool loaded;
     private List<Person> managers = new();
@@ -88,7 +88,7 @@
     // that manager again does nothing.
     private RenderFragment MemberRow(Person p) => @<div class="team-member" @key="p.Id">
         <span class="team-member-name">
-            <span class="rq-avatar">@p.Initials</span>
+            @if (p.PhotoUrl is not null) { <img class="rq-avatar avatar-photo" src="@p.PhotoUrl" alt="" /> } else { <span class="rq-avatar">@p.Initials</span> }
             <strong title="@p.Name">@p.Name</strong>
         </span>
         <select class="rq-input team-move" aria-label="Move @p.Name to a team" value="@(p.TeamManagerId ?? "")" @onchange="e => MoveAsync(p, e.Value?.ToString())">
@@ -122,7 +122,7 @@
         {
             var first = string.IsNullOrWhiteSpace(u.FirstName) ? (u.Email ?? "?") : u.FirstName;
             var initials = (first[..1] + (string.IsNullOrWhiteSpace(u.LastName) ? "" : u.LastName[..1])).ToUpper();
-            return new Person(u.Id, $"{first} {u.LastName}".Trim(), initials, RoleOf(u.Id), u.TeamManagerId);
+            return new Person(u.Id, $"{first} {u.LastName}".Trim(), initials, RoleOf(u.Id), u.TeamManagerId, F9SDMS.Services.ProfilePhotos.Url(u.Id, u.PhotoUpdatedAt));
         }).Where(p => p.Role != "Admin").ToList();
 
         managers = all.Where(p => p.Role == "Manager").OrderBy(p => p.Name).ToList();

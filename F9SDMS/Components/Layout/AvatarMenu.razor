@@ -1,17 +1,87 @@
-﻿@* The initials in the page header open a small menu: change password and log out.
-   Uses <details> so it works without extra script; the page must contain a #logoutForm form. *@
+﻿@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ProfilePhotos Photos
+@inject IAppClock Clock
+@inject IJSRuntime JS
+@inject ILogger<AvatarMenu> Logger
+
+@* The photo (or initials) in the page header opens a small menu: profile photo, change password
+   and log out. Uses <details> so it works without extra script; the page must contain a #logoutForm form. *@
 
 <details class="avatar-menu">
-    <summary class="avatar" aria-label="Account menu">@Initials</summary>
+    <summary class="avatar @(photoUrl is not null ? "has-photo" : "")" aria-label="Account menu">
+        @if (photoUrl is not null)
+        {
+            <img class="avatar-menu-photo" src="@photoUrl" alt="" />
+        }
+        else
+        {
+            @Initials
+        }
+    </summary>
     <div class="avatar-menu-panel">
         <div class="avatar-menu-head">
             <strong>@Name</strong>
             <span>@Subtitle</span>
         </div>
+        <button type="button" class="avatar-menu-item" @onclick="OpenPhoto">Profile photo</button>
         <a href="/Account/ChangePassword" data-enhance-nav="false" class="avatar-menu-item">Change password</a>
         <button type="submit" form="logoutForm" class="avatar-menu-item">Log out</button>
     </div>
 </details>
+
+@if (photoOpen)
+{
+    <div class="pp-overlay">
+        <section class="pp-dialog" role="dialog" aria-modal="true" aria-labelledby="ppTitle">
+            <div class="pp-head">
+                <h2 id="ppTitle">Profile photo</h2>
+                <button type="button" class="pp-close" aria-label="Close" @onclick="ClosePhoto" disabled="@photoBusy">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="20" height="20" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                </button>
+            </div>
+
+            <div class="pp-body">
+                <div class="pp-stage">
+                    <canvas id="ppCanvas" width="240" height="240" class="pp-canvas" aria-label="Photo preview, drag to move"></canvas>
+                    <span class="pp-empty" aria-hidden="true">@Initials</span>
+                </div>
+                <div class="pp-side">
+                    <label class="pp-field">
+                        <span>Zoom</span>
+                        <input type="range" id="ppZoom" min="1" max="3" step="0.01" value="1" />
+                    </label>
+                    <span class="pp-hint">Drag the photo to move it inside the circle.</span>
+                    <label class="pp-choose">
+                        @(photoUrl is null ? "Choose a photo" : "Choose another photo")
+                        <input type="file" id="ppFile" accept="image/jpeg,image/png,image/webp" />
+                    </label>
+                    <span class="pp-hint">JPG, PNG or WEBP. It's cropped to a circle and made small before it's saved.</span>
+                </div>
+            </div>
+
+            @if (photoError is not null)
+            {
+                <div class="pp-error" role="alert">@photoError</div>
+            }
+
+            <div class="pp-actions">
+                @if (photoUrl is not null)
+                {
+                    <button type="button" class="pp-remove" @onclick="RemovePhoto" disabled="@photoBusy">Remove photo</button>
+                }
+                <span class="pp-spacer"></span>
+                <button type="button" class="pp-btn-cancel" @onclick="ClosePhoto" disabled="@photoBusy">Cancel</button>
+                <button type="button" class="pp-btn-save" @onclick="SavePhoto" disabled="@photoBusy">@(photoBusy ? "Saving…" : "Save photo")</button>
+            </div>
+        </section>
+    </div>
+}
 
 @code {
     [Parameter] public string Initials { get; set; } = "";
@@ -19,4 +89,127 @@
 
     /// <summary>Email and role, shown under the name.</summary>
     [Parameter] public string Subtitle { get; set; } = "";
+
+    private string? userId;
+    private string? photoUrl;
+    private bool photoOpen;
+    private bool photoReady;
+    private bool photoBusy;
+    private string? photoError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            userId = UserManager.GetUserId(authState.User);
+            if (userId is null) return;
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var updated = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.PhotoUpdatedAt).FirstOrDefaultAsync();
+            photoUrl = ProfilePhotos.Url(userId, updated);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Loading the profile photo failed.");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The cropper needs the canvas on the page, so it starts after the dialog has rendered.
+        if (photoOpen && !photoReady)
+        {
+            photoReady = true;
+            try
+            {
+                await JS.InvokeVoidAsync("f9sdms.photo.init", "ppCanvas", "ppFile", "ppZoom", photoUrl);
+            }
+            catch (JSException ex)
+            {
+                Logger.LogDebug(ex, "Starting the photo cropper failed.");
+            }
+        }
+    }
+
+    private async Task OpenPhoto()
+    {
+        photoOpen = true;
+        photoReady = false;
+        photoError = null;
+        try { await JS.InvokeVoidAsync("f9sdms.closeAvatarMenus"); } catch (JSException) { }
+    }
+
+    private void ClosePhoto()
+    {
+        if (photoBusy) return;
+        photoOpen = false;
+    }
+
+    private async Task SavePhoto()
+    {
+        if (userId is null) return;
+        photoBusy = true;
+        photoError = null;
+        try
+        {
+            var data = await JS.InvokeAsync<string?>("f9sdms.photo.export", 320);
+            if (string.IsNullOrEmpty(data))
+            {
+                photoError = "Choose a photo first.";
+                return;
+            }
+
+            await Photos.SaveAsync(userId, Convert.FromBase64String(data));
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user is null) return;
+            user.PhotoUpdatedAt = Clock.Now;
+            await db.SaveChangesAsync();
+
+            photoUrl = ProfilePhotos.Url(userId, user.PhotoUpdatedAt);
+            photoOpen = false;
+        }
+        catch (InvalidDataException ex)
+        {
+            photoError = ex.Message + " Please try another photo.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving the profile photo failed.");
+            photoError = "Couldn't save the photo. Please try again.";
+        }
+        finally
+        {
+            photoBusy = false;
+        }
+    }
+
+    private async Task RemovePhoto()
+    {
+        if (userId is null) return;
+        photoBusy = true;
+        photoError = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user is not null)
+            {
+                user.PhotoUpdatedAt = null;
+                await db.SaveChangesAsync();
+            }
+            Photos.Delete(userId);
+            photoUrl = null;
+            photoOpen = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Removing the profile photo failed.");
+            photoError = "Couldn't remove the photo. Please try again.";
+        }
+        finally
+        {
+            photoBusy = false;
+        }
+    }
 }

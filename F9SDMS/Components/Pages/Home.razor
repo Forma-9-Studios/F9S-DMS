@@ -159,6 +159,25 @@
                         else
                         {
                             <span>Since @clockInTime.Value.ToString("h:mm tt") &middot; auto logout at @((sessionEnd ?? clockInTime.Value + F9SDMS.Services.AttendanceRules.MaxSessionLength).ToString("h:mm tt"))@(F9SDMS.Services.AttendanceRules.IsLunch(Clock.Now) ? " · lunch break until 4:00 PM" : "")</span>
+                            @if (earlyStatus == RequestOptions.StatusPending)
+                            {
+                                <div class="early-note pending" role="status">
+                                    <strong>Early clock-in · @F9SDMS.Services.EarlyClockIns.Format(F9SDMS.Services.EarlyClockIns.EarlyBy(clockInTime.Value)) before 11:00 AM</strong>
+                                    <span>Your manager has been notified. Until they approve it, your day counts from 11:00 AM.</span>
+                                </div>
+                            }
+                            else if (earlyStatus == RequestOptions.StatusApproved)
+                            {
+                                <div class="early-note approved" role="status"><strong>Early clock-in approved</strong><span>Your day counts from @clockInTime.Value.ToString("h:mm tt").</span></div>
+                            }
+                            else if (earlyStatus == RequestOptions.StatusRejected)
+                            {
+                                <div class="early-note rejected" role="status"><strong>Early time not approved</strong><span>Your day counts from 11:00 AM.</span></div>
+                            }
+                            else if (countFrom is DateTime startsAt && Clock.Now < startsAt)
+                            {
+                                <div class="early-note grace" role="status"><strong>You're a little early</strong><span>Your timer starts at @startsAt.ToString("h:mm tt"). No approval needed.</span></div>
+                            }
                         }
                     }
                     else
@@ -184,6 +203,13 @@
                             <a href="/projects/@checkingProjectId" class="current-project-link checking">
                                 <span class="current-project-title">@currentStatus</span>
                                 <span class="current-project-meta">@(CurrentCheck is null ? "" : $"Round {CurrentCheck.Round} · ")Logged as Checking hours</span>
+                            </a>
+                        }
+                        else if (currentStatus == F9SDMS.Services.Assisting.Status && currentProjectId is int assistProjectId)
+                        {
+                            <a href="/projects/@assistProjectId" class="current-project-link">
+                                <span class="current-project-title">Assisting @(assistName ?? "a colleague")</span>
+                                <span class="current-project-meta">@(assistTaskLabel is null ? "" : assistTaskLabel + " · ")Logged as Assist hours@(string.IsNullOrEmpty(assistNote) ? "" : $" · “{assistNote}”")</span>
                             </a>
                         }
                         else if (CurrentProject is not null)
@@ -295,7 +321,7 @@
                                 </div>
                                 @foreach (var preset in presetStatuses)
                                 {
-                                    <div class="status-dropdown-item @(currentStatus == preset ? "current" : "")" @onclick="() => Switch(preset, true, () => SetStatus(preset))">
+                                    <div class="status-dropdown-item @(currentStatus == preset ? "current" : "")" @onclick="() => PickPreset(preset)">
                                         @preset
                                         @if (currentStatus == preset)
                                         {
@@ -503,7 +529,7 @@
                         {
                             <div class="status-panel-row">
                                 <span class="status-dot-sm active-dot"></span>
-                                <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div>
+                                @if (emp.PhotoUrl is not null) { <img class="row-avatar row-avatar-sm avatar-photo" src="@emp.PhotoUrl" alt="" /> } else { <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div> }
                                 <span class="status-panel-name">@emp.FirstName @emp.LastName</span>
                                 @if (emp.CurrentProjectId is int workingOn)
                                 {
@@ -529,7 +555,7 @@
                         {
                             <div class="status-panel-row">
                                 <span class="status-dot-sm inactive-dot"></span>
-                                <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div>
+                                @if (emp.PhotoUrl is not null) { <img class="row-avatar row-avatar-sm avatar-photo" src="@emp.PhotoUrl" alt="" /> } else { <div class="row-avatar row-avatar-sm">@GetInitials(emp.FirstName, emp.LastName)</div> }
                                 <span>@emp.FirstName @emp.LastName</span>
                             </div>
                         }
@@ -573,7 +599,7 @@
                             <tr class="@(emp.IsActive ? "" : "acct-inactive-row")">
                                 <td>
                                     <div class="name-cell">
-                                        <div class="row-avatar">@GetInitials(emp.FirstName, emp.LastName)</div>
+                                        @if (emp.PhotoUrl is not null) { <img class="row-avatar avatar-photo" src="@emp.PhotoUrl" alt="" /> } else { <div class="row-avatar">@GetInitials(emp.FirstName, emp.LastName)</div> }
                                         <span>@emp.FirstName @emp.LastName</span>
                                         @if (emp.IsLocked)
                                         {
@@ -602,6 +628,78 @@
         }
         </div>
     </div>
+
+    @if (assistOpen)
+    {
+        <div class="modal-overlay">
+            <div class="modal-card as-card" role="dialog" aria-modal="true" aria-labelledby="assistTitle">
+                <div class="modal-title" id="assistTitle">Assist a colleague</div>
+                <div class="as-sub">Your time counts toward their task as Assist hours.</div>
+
+                @if (assistLoading)
+                {
+                    <div class="as-empty">Loading who's clocked in…</div>
+                }
+                else if (colleagues.Count == 0)
+                {
+                    <div class="as-empty">Nobody else is clocked in right now.</div>
+                }
+                else
+                {
+                    <div class="as-label">Who are you helping?</div>
+                    <div class="as-list" role="radiogroup" aria-label="Colleague">
+                        @foreach (var c in colleagues)
+                        {
+                            <button type="button" role="radio" aria-checked="@(assistColleagueId == c.Id ? "true" : "false")" class="as-person @(assistColleagueId == c.Id ? "selected" : "")" @onclick="() => PickColleague(c)">
+                                @if (c.PhotoUrl is not null)
+                                {
+                                    <img class="as-avatar avatar-photo" src="@c.PhotoUrl" alt="" />
+                                }
+                                else
+                                {
+                                    <span class="as-avatar">@c.Initials</span>
+                                }
+                                <span class="as-person-text">
+                                    <strong>@c.Name</strong>
+                                    <span>@c.Activity</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+
+                    @if (SelectedColleague is { } sc)
+                    {
+                        <label class="as-label" for="assistTask">Task</label>
+                        @if (sc.Options.Count == 0)
+                        {
+                            <div class="as-empty">@sc.Name has no open tasks to help with right now.</div>
+                        }
+                        else
+                        {
+                            <select id="assistTask" class="form-input" @bind="assistOptionIndex">
+                                @for (var i = 0; i < sc.Options.Count; i++)
+                                {
+                                    <option value="@i">@(sc.Options[i].Label + (i == 0 && sc.WorkingNow ? " (what they're on now)" : ""))</option>
+                                }
+                            </select>
+                        }
+                        <label class="as-label" for="assistNote">Note <span class="as-optional">(optional)</span></label>
+                        <input id="assistNote" class="form-input" maxlength="200" placeholder="What are you helping with?" @bind="assistNoteInput" />
+                    }
+                }
+
+                @if (assistError is not null)
+                {
+                    <div class="as-error" role="alert">@assistError</div>
+                }
+
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn-cancel" @onclick="() => assistOpen = false">Cancel</button>
+                    <button type="button" class="modal-btn-confirm" disabled="@(SelectedColleague is null || SelectedColleague.Options.Count == 0)" @onclick="ConfirmAssist">Start assisting</button>
+                </div>
+            </div>
+        </div>
+    }
 
     @if (switchAction is not null)
     {
@@ -774,6 +872,10 @@
     private TimeSpan? sessionLimit = F9SDMS.Services.AttendanceRules.MaxSessionLength;
     // When the regular session is logged out (lunch doesn't count towards the 8 hours). Null for overtime.
     private DateTime? sessionEnd;
+    // Signed in before 11:00 AM: when the time starts counting (null = from the sign-in), and the
+    // manager's decision on an early clock-in (Pending / Approved / Rejected; null = not early).
+    private DateTime? countFrom;
+    private string? earlyStatus;
     private bool isOvertimeSession;
     private TimeSpan approvedOvertimeToday;
     private int pendingApprovals;
@@ -827,6 +929,137 @@
     private F9SDMS.Services.CheckQueueItem? CurrentCheck => currentCheckId is int cid ? toCheck.FirstOrDefault(x => x.SubmissionId == cid) : null;
     private F9SDMS.Services.CheckQueueItem? reviewItem;
     private string? checkMessage;
+
+    // Assist Colleague: the picker, and what the status shows while assisting.
+    private bool assistOpen;
+    private bool assistLoading;
+    private List<F9SDMS.Services.Assisting.Colleague> colleagues = new();
+    private string? assistColleagueId;
+    private int assistOptionIndex;
+    private string assistNoteInput = "";
+    private string? assistError;
+    private string? assistName;
+    private string? assistTaskLabel;
+    private string? assistNote;
+
+    private F9SDMS.Services.Assisting.Colleague? SelectedColleague => colleagues.FirstOrDefault(c => c.Id == assistColleagueId);
+
+    private async Task PickPreset(string preset)
+    {
+        if (preset == F9SDMS.Services.Assisting.Status)
+        {
+            await OpenAssist();
+            return;
+        }
+        await Switch(preset, true, () => SetStatus(preset));
+    }
+
+    private async Task OpenAssist()
+    {
+        showStatusDropdown = false;
+        if (currentUserId is null) return;
+        if (!clockInTime.HasValue)
+        {
+            checkMessage = "Clock in to assist a colleague.";
+            checkMessageIsError = true;
+            return;
+        }
+        assistOpen = true;
+        assistLoading = true;
+        assistError = null;
+        assistNoteInput = "";
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            colleagues = await F9SDMS.Services.Assisting.GetColleaguesAsync(db, currentUserId, Clock.Now);
+            assistColleagueId = colleagues.FirstOrDefault(c => c.WorkingNow)?.Id ?? colleagues.FirstOrDefault()?.Id;
+            assistOptionIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading colleagues failed.");
+            assistError = "Couldn't load who's clocked in. Please try again.";
+        }
+        finally
+        {
+            assistLoading = false;
+        }
+    }
+
+    private void PickColleague(F9SDMS.Services.Assisting.Colleague colleague)
+    {
+        assistColleagueId = colleague.Id;
+        assistOptionIndex = 0;
+        assistError = null;
+    }
+
+    private async Task ConfirmAssist()
+    {
+        var colleague = SelectedColleague;
+        if (colleague is null || colleague.Options.Count == 0) return;
+        var option = colleague.Options[Math.Clamp(assistOptionIndex, 0, colleague.Options.Count - 1)];
+        var note = assistNoteInput;
+        assistOpen = false;
+        await Switch($"Assisting {colleague.Name.Split(' ')[0]}", true, () => StartAssist(colleague, option, note));
+    }
+
+    private async Task StartAssist(F9SDMS.Services.Assisting.Colleague colleague, F9SDMS.Services.Assisting.Option option, string note)
+    {
+        if (currentUserId is null) return;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var error = await F9SDMS.Services.Assisting.StartAsync(db, currentUserId, colleague.Id, option, note, Clock.Now);
+            if (error is not null)
+            {
+                checkMessage = error;
+                checkMessageIsError = true;
+                return;
+            }
+            currentStatus = F9SDMS.Services.Assisting.Status;
+            currentProjectId = option.ProjectId;
+            currentSubcategoryId = option.SubcategoryId;
+            currentTaskId = option.TaskId;
+            currentCheckId = null;
+            assistName = colleague.Name.Split(' ')[0];
+            assistTaskLabel = option.Label;
+            assistNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+            checkMessage = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Starting Assist Colleague failed.");
+            checkMessage = "Couldn't start assisting. Please try again.";
+            checkMessageIsError = true;
+        }
+
+        if (canViewTeamStatus)
+        {
+            await LoadEmployees();
+        }
+    }
+
+    /// <summary>Who and what the current user is assisting, for the status line.</summary>
+    private async Task LoadAssistLabelAsync(ApplicationDbContext db, string? assistingUserId, string? note)
+    {
+        assistNote = note;
+        if (currentStatus != F9SDMS.Services.Assisting.Status || assistingUserId is null)
+        {
+            assistName = null;
+            assistTaskLabel = null;
+            return;
+        }
+        assistName = await db.Users.AsNoTracking().Where(u => u.Id == assistingUserId).Select(u => u.FirstName).FirstOrDefaultAsync();
+        if (currentTaskId is int tid)
+        {
+            assistTaskLabel = await db.ProjectTasks.AsNoTracking().Where(t => t.Id == tid)
+                .Select(t => t.Project!.Sample + " › " + t.Subcategory!.Name + " › " + t.Name).FirstOrDefaultAsync();
+        }
+        else if (currentProjectId is int pid)
+        {
+            assistTaskLabel = await db.Projects.AsNoTracking().Where(p => p.Id == pid).Select(p => p.Sample).FirstOrDefaultAsync();
+        }
+    }
     private List<F9SDMS.Services.ReturnedItem> returned = new();
 
     // Right-hand tabs: My Projects, Returned, To check.
@@ -1149,6 +1382,8 @@
         isOvertimeSession = session.IsOvertime;
         sessionLimit = F9SDMS.Services.AttendanceRules.GetLimit(session);
         sessionEnd = F9SDMS.Services.AttendanceRules.GetEndTime(session);
+        countFrom = session.CountFrom;
+        earlyStatus = session.EarlyStatus;
         approvedOvertimeToday = session.IsOvertime
             ? await F9SDMS.Services.OvertimeRules.GetApprovedExtraAsync(db, session.EmployeeId, session.ClockInTime)
             : TimeSpan.Zero;
@@ -1269,7 +1504,7 @@
 
             var allUsers = await db.Users
                 .AsNoTracking()
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId, u.DeactivatedAt, u.LockoutEnd })
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.CurrentStatus, u.CurrentProjectId, u.DeactivatedAt, u.LockoutEnd, u.PhotoUpdatedAt })
                 .ToListAsync();
 
             var userRoles = await (from ur in db.UserRoles
@@ -1292,7 +1527,8 @@
                 Status = string.IsNullOrWhiteSpace(u.CurrentStatus) ? "Available" : u.CurrentStatus,
                 CurrentProjectId = u.CurrentProjectId,
                 DeactivatedAt = u.DeactivatedAt,
-                IsLocked = u.LockoutEnd is DateTimeOffset end && end > DateTimeOffset.UtcNow
+                IsLocked = u.LockoutEnd is DateTimeOffset end && end > DateTimeOffset.UtcNow,
+                PhotoUrl = F9SDMS.Services.ProfilePhotos.Url(u.Id, u.PhotoUpdatedAt)
             }).ToList();
 
             var activeIds = await db.AttendanceSessions
@@ -1333,6 +1569,8 @@
                     user.CurrentSubcategoryId = null;
                     user.CurrentCheckId = null;
                     user.CurrentTaskId = null;
+                    user.AssistingUserId = null;
+                    user.AssistNote = null;
                     await db.SaveChangesAsync();
                 }
 
@@ -1357,7 +1595,7 @@
 
         // Project time only counts while clocked in; picking what you're already on does nothing.
         if (currentUserId is null || !clockInTime.HasValue) return;
-        if (currentCheckId is null && currentProjectId == project.Id && currentSubcategoryId == subcategoryId && currentTaskId == taskId) return;
+        if (currentCheckId is null && currentStatus != F9SDMS.Services.Assisting.Status && currentProjectId == project.Id && currentSubcategoryId == subcategoryId && currentTaskId == taskId) return;
 
         // A project with sub-categories must be worked on through one of their tasks.
         var sub = subcategoryId is int sid ? project.Subcategories.FirstOrDefault(x => x.Id == sid) : null;
@@ -1400,6 +1638,8 @@
                 user.CurrentSubcategoryId = sub?.Id;
                 user.CurrentTaskId = task?.Id;
                 user.CurrentCheckId = null;
+                user.AssistingUserId = null;
+                user.AssistNote = null;
                 await db.SaveChangesAsync();
             }
 
@@ -1463,7 +1703,7 @@
             var fresh = await db.Users
                 .AsNoTracking()
                 .Where(u => u.Id == userId)
-                .Select(u => new { u.CurrentStatus, u.CurrentProjectId, u.CurrentSubcategoryId, u.CurrentCheckId, u.CurrentTaskId })
+                .Select(u => new { u.CurrentStatus, u.CurrentProjectId, u.CurrentSubcategoryId, u.CurrentCheckId, u.CurrentTaskId, u.AssistingUserId, u.AssistNote })
                 .FirstOrDefaultAsync();
             if (fresh is not null)
             {
@@ -1472,6 +1712,7 @@
                 currentSubcategoryId = fresh.CurrentSubcategoryId;
                 currentCheckId = fresh.CurrentCheckId;
                 currentTaskId = fresh.CurrentTaskId;
+                await LoadAssistLabelAsync(db, fresh.AssistingUserId, fresh.AssistNote);
             }
 
             myProjects = projects.Select(p => new MyProject
@@ -1884,7 +2125,8 @@
     {
         if (clockInTime.HasValue)
         {
-            var span = Clock.Now - clockInTime.Value;
+            // An early sign-in only starts counting at 11:00 AM (unless a manager approved it).
+            var span = Clock.Now - (countFrom ?? clockInTime.Value);
             if (span < TimeSpan.Zero) span = TimeSpan.Zero;
             elapsed = span.ToString(@"hh\:mm\:ss");
         }
@@ -1930,6 +2172,7 @@
         public DateTime? DeactivatedAt { get; set; }
         public bool IsActive => DeactivatedAt is null;
         public bool IsLocked { get; set; }
+        public string? PhotoUrl { get; set; }
     }
 
     private class MyProject

@@ -40,6 +40,29 @@
                 <div class="notif-list">
                     @foreach (var n in items)
                     {
+                        @if (n.Kind == Notification.KindEarlyClockIn && isApprover && EarlyClockIns.SessionIdFrom(n.Link) is int earlySession && pendingEarly.Contains(earlySession))
+                        {
+                            <div class="notif-item unread notif-actionable">
+                                <span class="notif-dot" aria-hidden="true"></span>
+                                <span class="notif-text">
+                                    <span class="notif-top">
+                                        <span class="notif-kind @KindCss(n.Kind)">@KindLabel(n.Kind)</span>
+                                        <span class="notif-when">@When(n.CreatedAt)</span>
+                                    </span>
+                                    <span class="notif-title">@n.Title</span>
+                                    @if (!string.IsNullOrEmpty(n.Body))
+                                    {
+                                        <span class="notif-body">@n.Body</span>
+                                    }
+                                    <span class="notif-actions">
+                                        <button type="button" class="notif-approve" disabled="@deciding" @onclick="() => DecideEarly(earlySession, true)">Approve</button>
+                                        <button type="button" class="notif-reject" disabled="@deciding" @onclick="() => DecideEarly(earlySession, false)">Reject</button>
+                                    </span>
+                                </span>
+                            </div>
+                        }
+                        else
+                        {
                         <button type="button" class="notif-item @(n.ReadAt is null ? "unread" : "")" @onclick="() => OpenItem(n)">
                             <span class="notif-dot" aria-hidden="true"></span>
                             <span class="notif-text">
@@ -54,6 +77,7 @@
                                 }
                             </span>
                         </button>
+                        }
                     }
                 </div>
             }
@@ -68,6 +92,10 @@
     private int unread;
     private bool open;
     private List<Notification> items = new();
+    // Managers and admins can approve or reject early clock-ins right from the bell.
+    private bool isApprover;
+    private HashSet<int> pendingEarly = new();
+    private bool deciding;
     private System.Threading.Timer? timer;
     private bool disposed;
 
@@ -75,6 +103,7 @@
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         userId = UserManager.GetUserId(authState.User);
+        isApprover = authState.User.IsInRole("Admin") || authState.User.IsInRole("Manager");
         await LoadCountAsync();
     }
 
@@ -118,6 +147,33 @@
             .ThenByDescending(n => n.CreatedAt)
             .Take(20)
             .ToListAsync();
+
+        var earlyIds = items.Where(n => n.Kind == Notification.KindEarlyClockIn)
+            .Select(n => EarlyClockIns.SessionIdFrom(n.Link)).OfType<int>().ToList();
+        pendingEarly = earlyIds.Count == 0
+            ? new()
+            : (await db.AttendanceSessions.AsNoTracking()
+                .Where(s => earlyIds.Contains(s.Id) && s.EarlyStatus == RequestOptions.StatusPending)
+                .Select(s => s.Id).ToListAsync()).ToHashSet();
+    }
+
+    private async Task DecideEarly(int sessionId, bool approve)
+    {
+        if (userId is null || !isApprover || deciding) return;
+        deciding = true;
+        try
+        {
+            await using (var db = await DbFactory.CreateDbContextAsync())
+            {
+                await EarlyClockIns.DecideAsync(db, sessionId, approve, userId, Clock.Now);
+            }
+            await LoadCountAsync();
+            await LoadItemsAsync();
+        }
+        finally
+        {
+            deciding = false;
+        }
     }
 
     private async Task Toggle()
@@ -167,6 +223,7 @@
         Notification.KindTicketNew => "New IT ticket",
         Notification.KindTicketReply => "IT ticket reply",
         Notification.KindTicketResolved => "IT ticket resolved",
+        Notification.KindEarlyClockIn => "Early clock-in",
         _ => "Deadline coming up"
     };
 
@@ -178,6 +235,7 @@
         Notification.KindTicketNew => "ticket",
         Notification.KindTicketReply => "ticket",
         Notification.KindTicketResolved => "approved",
+        Notification.KindEarlyClockIn => "early",
         _ => "soon"
     };
 

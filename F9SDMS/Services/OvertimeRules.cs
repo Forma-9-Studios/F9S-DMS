@@ -59,7 +59,8 @@ namespace F9SDMS.Services
         {
             var overtime = await db.OvertimeRequests.CountAsync(o => o.Status == RequestOptions.StatusPending && o.EmployeeId != viewerId);
             var leave = await db.LeaveRequests.CountAsync(l => l.Status == RequestOptions.StatusPending && l.EmployeeId != viewerId);
-            return overtime + leave;
+            var early = await EarlyClockIns.CountPendingAsync(db, viewerId);
+            return overtime + leave + early;
         }
 
         /// <summary>Formats minutes as "2h", "1h 30m" or "45m".</summary>

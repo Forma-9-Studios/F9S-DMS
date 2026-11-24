@@ -12,6 +12,7 @@ namespace F9SDMS.Data
         public const string KindTicketNew = "TicketNew";
         public const string KindTicketReply = "TicketReply";
         public const string KindTicketResolved = "TicketResolved";
+        public const string KindEarlyClockIn = "EarlyClockIn";
 
         [Key]
         public int Id { get; set; }

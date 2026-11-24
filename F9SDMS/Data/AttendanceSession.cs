@@ -32,5 +32,21 @@ namespace F9SDMS.Data
         /// 8 hours when it started. Null for older sessions (8 hours).
         /// </summary>
         public int? LimitMinutes { get; set; }
+
+        /// <summary>
+        /// Signed in before 11:00 AM: the day counts from this time (11:00 AM) instead of the
+        /// sign-in. Null = counts from <see cref="ClockInTime"/> (on time, or an approved early clock-in).
+        /// </summary>
+        public DateTime? CountFrom { get; set; }
+
+        /// <summary>
+        /// Signed in before 10:45 AM: Pending until a manager approves or rejects the early time
+        /// (<see cref="RequestOptions"/> statuses). Null = not an early clock-in.
+        /// </summary>
+        [System.ComponentModel.DataAnnotations.MaxLength(20)]
+        public string? EarlyStatus { get; set; }
+
+        public string? EarlyDecidedById { get; set; }
+        public DateTime? EarlyDecidedAt { get; set; }
     }
 }

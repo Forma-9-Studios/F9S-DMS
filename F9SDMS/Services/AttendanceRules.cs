@@ -67,7 +67,23 @@ namespace F9SDMS.Services
 
         /// <summary>When a regular session is logged out automatically (null for overtime).</summary>
         public static DateTime? GetEndTime(AttendanceSession session) =>
-            GetLimit(session) is TimeSpan work ? AddWorkTime(session.ClockInTime, work) : null;
+            GetLimit(session) is TimeSpan work ? AddWorkTime(CountStart(session), work) : null;
+
+        /// <summary>The official start of the workday (11:00 AM). Earlier time only counts if a manager approves it.</summary>
+        public static readonly TimeSpan WorkStart = new(11, 0, 0);
+
+        /// <summary>
+        /// Signing in this close to <see cref="WorkStart"/> (10:45 to 11:00 AM) is fine: the timer just
+        /// starts at 11:00. Earlier than that is an early clock-in that a manager approves or rejects.
+        /// </summary>
+        public static readonly TimeSpan EarlyGrace = TimeSpan.FromMinutes(15);
+
+        /// <summary>When a session's time starts counting: 11:00 AM for an early sign-in that isn't approved, else the sign-in.</summary>
+        public static DateTime CountStart(AttendanceSession session) => session.CountFrom ?? session.ClockInTime;
+
+        /// <summary>Counted time of a session that started at <paramref name="clockIn"/> (lunch excluded).</summary>
+        public static TimeSpan CountedTime(DateTime clockIn, DateTime? countFrom, DateTime end) =>
+            WorkTime(countFrom ?? clockIn, end);
 
         /// <summary>True during the lunch break.</summary>
         public static bool IsLunch(DateTime now) => now.TimeOfDay >= LunchStart && now.TimeOfDay < LunchEnd;
@@ -148,6 +164,17 @@ namespace F9SDMS.Services
                     IsOvertime = isOvertime,
                     LimitMinutes = isOvertime ? null : (int)Math.Ceiling(remaining.TotalMinutes)
                 };
+
+                // Before 11:00 AM the day counts from 11:00. Before 10:45 it's an early clock-in:
+                // the manager is asked to approve (count from the sign-in) or reject it.
+                if (!isOvertime && now.TimeOfDay < WorkStart)
+                {
+                    sessionToResume.CountFrom = now.Date + WorkStart;
+                    if (now.TimeOfDay < WorkStart - EarlyGrace)
+                    {
+                        sessionToResume.EarlyStatus = RequestOptions.StatusPending;
+                    }
+                }
                 db.AttendanceSessions.Add(sessionToResume);
             }
 
@@ -160,6 +187,11 @@ namespace F9SDMS.Services
             {
                 // Any project work from the previous session ended when that session did.
                 await ProjectWork.StopAsync(db, employeeId, lastEnded ?? now, clearCurrentProject: true);
+
+                if (sessionToResume.EarlyStatus == RequestOptions.StatusPending)
+                {
+                    await EarlyClockIns.NotifyManagersAsync(db, sessionToResume, now);
+                }
             }
 
             return sessionToResume;
@@ -172,13 +204,13 @@ namespace F9SDMS.Services
             var next = day.AddDays(1);
             var sessions = await db.AttendanceSessions.AsNoTracking()
                 .Where(s => s.EmployeeId == employeeId && !s.IsOvertime && s.ClockInTime >= day && s.ClockInTime < next)
-                .Select(s => new { s.ClockInTime, s.ClockOutTime })
+                .Select(s => new { s.ClockInTime, s.ClockOutTime, s.CountFrom })
                 .ToListAsync();
 
             var total = TimeSpan.Zero;
             foreach (var s in sessions)
             {
-                total += WorkTime(s.ClockInTime, s.ClockOutTime ?? now);
+                total += CountedTime(s.ClockInTime, s.CountFrom, s.ClockOutTime ?? now);
             }
             return total;
         }

@@ -56,6 +56,9 @@
         public const string WorkModeling = "Modeling";
         public const string WorkChecking = "Checking";
 
+        /// <summary>Time spent helping a colleague on their task (Assist Colleague status).</summary>
+        public const string WorkAssist = "Assist";
+
         /// <summary>Results a checker can give a submission.</summary>
         public const string ResultApproved = "Approved";
         public const string ResultReturned = "Returned";

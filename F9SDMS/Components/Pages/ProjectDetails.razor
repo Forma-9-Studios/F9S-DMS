@@ -138,6 +138,10 @@
                     <div class="hours-summary">
                         <span>Modeling <strong>@FormatDuration(ModelingTotal)</strong></span>
                         <span class="checking-hours">Checking <strong>@FormatDuration(CheckingTotal)</strong></span>
+                        @if (AssistTotal > TimeSpan.Zero)
+                        {
+                            <span>incl. Assist <strong>@FormatDuration(AssistTotal)</strong></span>
+                        }
                         <span>Total <strong>@FormatDuration(TotalDuration)</strong></span>
                         @if (hasSubcategories)
                         {
@@ -344,6 +348,7 @@
                                 <option value="">All</option>
                                 <option value="@ProjectOptions.WorkModeling">Modeling</option>
                                 <option value="@ProjectOptions.WorkChecking">Checking</option>
+                                <option value="@ProjectOptions.WorkAssist">Assist</option>
                             </select>
                         </div>
                         @if (subFilterOptions.Count > 0)
@@ -380,7 +385,7 @@
                                 <tr>
                                     <td>@entry.Name</td>
                                     <td><span class="sub-pill">@entry.PartName</span></td>
-                                    <td><span class="type-pill @(entry.WorkType == ProjectOptions.WorkChecking ? "checking" : "")">@entry.WorkType</span></td>
+                                    <td><span class="type-pill @(entry.WorkType == ProjectOptions.WorkChecking ? "checking" : entry.WorkType == ProjectOptions.WorkAssist ? "assist" : "")">@entry.WorkType</span></td>
                                     <td>@entry.Start.ToString("MMM d, yyyy")</td>
                                     <td>@entry.Start.ToString("hh:mm:ss tt")</td>
                                     <td>
@@ -571,6 +576,8 @@
     private TimeSpan TotalDuration => entries.Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
     private TimeSpan ModelingTotal => entries.Where(e => e.WorkType != ProjectOptions.WorkChecking).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
     private TimeSpan CheckingTotal => entries.Where(e => e.WorkType == ProjectOptions.WorkChecking).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
+    // Assist Colleague time is counted with Modeling, and shown on its own here.
+    private TimeSpan AssistTotal => entries.Where(e => e.WorkType == ProjectOptions.WorkAssist).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration);
 
     private IEnumerable<PartRowData> ActiveTasks => groups.Where(g => !g.Archived).SelectMany(g => g.Tasks);
     private int ActiveTaskCount => ActiveTasks.Count();

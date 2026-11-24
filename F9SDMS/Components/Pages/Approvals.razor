@@ -17,7 +17,7 @@
 <PageTitle>Approvals – F9SDMS</PageTitle>
 
 <AppShell Active="approvals" Title="Approvals" PendingCount="pendingTotal"
-          Subtitle="@(view == "balances" ? $"Leave balances for {Clock.Now.Year}, earned monthly from each employee's start date." : "Overtime and leave requests from everyone. Any manager or admin can decide.")">
+          Subtitle="@(view == "balances" ? $"Leave balances for {Clock.Now.Year}, earned monthly from each employee's start date." : "Overtime, leave and early clock-in requests from everyone. Any manager or admin can decide.")">
     <HeaderActions>
         <div class="rq-tabs" role="tablist" aria-label="View">
             <button type="button" role="tab" aria-selected="@(view == "requests" ? "true" : "false")" class="rq-tab @(view == "requests" ? "active" : "")" @onclick="@(() => view = "requests")">Requests</button>
@@ -32,6 +32,54 @@
 
         @if (view == "requests")
         {
+            @if (earlyItems.Count > 0)
+            {
+                <section class="rq-card ec-card">
+                    <div class="rq-card-toolbar">
+                        <h2 class="rq-card-title">Early clock-ins</h2>
+                        <span class="rq-muted rq-small">Signed in before 10:45 AM. Approve to count the time before 11:00 AM.</span>
+                    </div>
+                    <div class="rq-table-scroll">
+                        <table class="rq-table">
+                            <thead>
+                                <tr><th>Employee</th><th>Clocked in</th><th>Early by</th><th>Status</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in earlyItems)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="rq-person">
+                                                @if (e.PhotoUrl is not null) { <img class="rq-avatar avatar-photo" src="@e.PhotoUrl" alt="" /> } else { <span class="rq-avatar">@e.Initials</span> }
+                                                <strong>@e.Name</strong>
+                                            </span>
+                                        </td>
+                                        <td>@(e.ClockIn.Date == Clock.Now.Date ? $"{e.ClockIn:h:mm tt} today" : e.ClockIn.ToString("MMM d, h:mm tt"))</td>
+                                        <td>@EarlyClockIns.Format(e.EarlyBy)</td>
+                                        <td>
+                                            <span class="ec-status @RequestOptions.StatusCss(e.Status)">@e.Status</span>
+                                            @if (e.DecidedBy is not null)
+                                            {
+                                                <span class="rq-muted"> · @e.DecidedBy</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (e.Status == RequestOptions.StatusPending && e.EmployeeId != userId)
+                                            {
+                                                <span class="rq-action-group">
+                                                    <button type="button" class="rq-reject-btn" disabled="@isSaving" @onclick="() => DecideEarly(e, false)">Reject</button>
+                                                    <button type="button" class="rq-approve-btn" disabled="@isSaving" @onclick="() => DecideEarly(e, true)">Approve</button>
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            }
+
             <section class="rq-card">
                 <div class="rq-card-toolbar">
                     <div class="rq-tabs" role="tablist" aria-label="Status">
@@ -407,6 +455,7 @@
 
     private string? message;
     private bool messageIsError;
+    private List<EarlyClockIns.Item> earlyItems = new();
     private CancellationTokenSource? messageCts;
     private string? formError;
 
@@ -543,7 +592,9 @@
             list.Add(row);
         }
         rows = list;
-        pendingTotal = rows.Count(r => r.Status == RequestOptions.StatusPending && r.EmployeeId != userId);
+        earlyItems = await EarlyClockIns.ListAsync(db, now);
+        pendingTotal = rows.Count(r => r.Status == RequestOptions.StatusPending && r.EmployeeId != userId)
+            + earlyItems.Count(e => e.Status == RequestOptions.StatusPending && e.EmployeeId != userId);
 
         // Who's off this week (Monday to Sunday), approved or pending.
         var monday = now.Date.AddDays(-(((int)now.DayOfWeek + 6) % 7));
@@ -845,6 +896,32 @@
         {
             Logger.LogError(ex, "Saving the leave policy failed.");
             ShowMessage("Something went wrong while saving the policy.", true);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DecideEarly(EarlyClockIns.Item item, bool approve)
+    {
+        if (userId is null || isSaving) return;
+        isSaving = true;
+        try
+        {
+            await using (var db = await DbFactory.CreateDbContextAsync())
+            {
+                var done = await EarlyClockIns.DecideAsync(db, item.SessionId, approve, userId, Clock.Now);
+                ShowMessage(done
+                    ? $"{(approve ? "Approved" : "Rejected")} {item.Name.Split(' ')[0]}'s early clock-in."
+                    : "Someone already decided this one.", !done);
+            }
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Deciding an early clock-in failed.");
+            ShowMessage("Couldn't save that. Please try again.", true);
         }
         finally
         {

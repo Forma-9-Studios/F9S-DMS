@@ -28,12 +28,15 @@ namespace F9SDMS.Data
 
         public ProjectTask? Task { get; set; }
 
-        /// <summary><see cref="ProjectOptions.WorkModeling"/> or <see cref="ProjectOptions.WorkChecking"/>.</summary>
+        /// <summary><see cref="ProjectOptions.WorkModeling"/>, <see cref="ProjectOptions.WorkChecking"/> or <see cref="ProjectOptions.WorkAssist"/>.</summary>
         [Required, MaxLength(20)]
         public string WorkType { get; set; } = ProjectOptions.WorkModeling;
 
         public DateTime StartTime { get; set; }
 
         public DateTime? EndTime { get; set; }
+
+        /// <summary>Assist hours (<see cref="ProjectOptions.WorkAssist"/>): the colleague who was helped.</summary>
+        public string? AssistedUserId { get; set; }
     }
 }

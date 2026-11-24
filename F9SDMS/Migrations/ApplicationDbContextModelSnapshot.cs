@@ -25,6 +25,13 @@ namespace F9SDMS.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AssistNote")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AssistingUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
@@ -89,6 +96,9 @@ namespace F9SDMS.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("PhotoUpdatedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("TEXT");
 
@@ -127,6 +137,19 @@ namespace F9SDMS.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ClockOutTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CountFrom")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EarlyDecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EarlyDecidedById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EarlyStatus")
+                        .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("EmployeeId")
@@ -695,6 +718,9 @@ namespace F9SDMS.Migrations
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("AssistedUserId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EmployeeId")
                         .IsRequired()

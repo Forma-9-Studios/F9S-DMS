@@ -41,5 +41,15 @@ namespace F9SDMS.Data
         /// and are hidden from teams and pickers, but their history stays.
         /// </summary>
         public DateTime? DeactivatedAt { get; set; }
+
+        /// <summary>When the person last set their profile photo (null = no photo; initials show instead).</summary>
+        public DateTime? PhotoUpdatedAt { get; set; }
+
+        /// <summary>While their status is Assist Colleague: the colleague they're helping.</summary>
+        public string? AssistingUserId { get; set; }
+
+        /// <summary>Optional note shown with Assist Colleague ("Helping with the circuiting").</summary>
+        [System.ComponentModel.DataAnnotations.MaxLength(200)]
+        public string? AssistNote { get; set; }
     }
 }

@@ -158,3 +158,106 @@ f9sdms.togglePassword = function (button, inputId) {
     button.classList.toggle('on', show);
     button.setAttribute('aria-pressed', show ? 'true' : 'false');
 };
+
+// ---- Close the account menu (e.g. when opening the profile photo dialog) ----
+f9sdms.closeAvatarMenus = function () {
+    document.querySelectorAll('details.avatar-menu[open]').forEach(function (m) { m.removeAttribute('open'); });
+};
+
+// ---- Profile photo cropper: pick a photo, drag and zoom it in a circle, export a small JPEG ----
+f9sdms.photo = (function () {
+    var st = null;
+
+    function clamp() {
+        var size = st.canvas.width, s = st.base * st.zoom;
+        var w = st.img.naturalWidth * s, h = st.img.naturalHeight * s;
+        st.x = Math.min(0, Math.max(size - w, st.x));
+        st.y = Math.min(0, Math.max(size - h, st.y));
+    }
+
+    function draw() {
+        var ctx = st.canvas.getContext('2d');
+        ctx.clearRect(0, 0, st.canvas.width, st.canvas.height);
+        if (!st.img) return;
+        clamp();
+        var s = st.base * st.zoom;
+        ctx.drawImage(st.img, st.x, st.y, st.img.naturalWidth * s, st.img.naturalHeight * s);
+    }
+
+    function load(src) {
+        var img = new Image();
+        img.onload = function () {
+            var size = st.canvas.width;
+            st.img = img;
+            st.base = Math.max(size / img.naturalWidth, size / img.naturalHeight);
+            st.zoom = 1;
+            if (st.zoomEl) st.zoomEl.value = 1;
+            st.x = (size - img.naturalWidth * st.base) / 2;
+            st.y = (size - img.naturalHeight * st.base) / 2;
+            st.canvas.classList.add('has-image');
+            draw();
+        };
+        img.src = src;
+    }
+
+    return {
+        init: function (canvasId, fileId, zoomId, existingUrl) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            st = { canvas: canvas, zoomEl: document.getElementById(zoomId), img: null, x: 0, y: 0, zoom: 1, base: 1 };
+
+            var file = document.getElementById(fileId);
+            if (file) file.addEventListener('change', function () {
+                var f = file.files && file.files[0];
+                if (!f) return;
+                var reader = new FileReader();
+                reader.onload = function () { load(reader.result); };
+                reader.readAsDataURL(f);
+            });
+
+            if (st.zoomEl) st.zoomEl.addEventListener('input', function () {
+                if (!st.img) return;
+                var size = st.canvas.width, c = size / 2;
+                var before = st.base * st.zoom, z = parseFloat(st.zoomEl.value) || 1, after = st.base * z;
+                // Zoom around the centre of the circle.
+                st.x = c - (c - st.x) * after / before;
+                st.y = c - (c - st.y) * after / before;
+                st.zoom = z;
+                draw();
+            });
+
+            var drag = null;
+            canvas.addEventListener('pointerdown', function (e) {
+                if (!st.img) return;
+                drag = { x: e.clientX, y: e.clientY, ox: st.x, oy: st.y };
+                canvas.setPointerCapture(e.pointerId);
+            });
+            canvas.addEventListener('pointermove', function (e) {
+                if (!drag) return;
+                var k = canvas.width / canvas.getBoundingClientRect().width;
+                st.x = drag.ox + (e.clientX - drag.x) * k;
+                st.y = drag.oy + (e.clientY - drag.y) * k;
+                draw();
+            });
+            ['pointerup', 'pointercancel'].forEach(function (name) {
+                canvas.addEventListener(name, function () { drag = null; });
+            });
+
+            if (existingUrl) load(existingUrl);
+        },
+
+        // Returns the cropped photo as base64 JPEG (no "data:" prefix), or null if none was chosen.
+        export: function (size) {
+            if (!st || !st.img) return null;
+            var out = document.createElement('canvas');
+            out.width = out.height = size;
+            var ctx = out.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+            var k = size / st.canvas.width, s = st.base * st.zoom * k;
+            ctx.drawImage(st.img, st.x * k, st.y * k, st.img.naturalWidth * s, st.img.naturalHeight * s);
+            var data = out.toDataURL('image/jpeg', 0.88);
+            return data.slice(data.indexOf(',') + 1);
+        }
+    };
+})();

@@ -18,7 +18,8 @@ namespace F9SDMS.Services
         TimeSpan Today,
         int OverdueTasks,
         int DueSoonTasks,
-        string Footer);
+        string Footer,
+        string? PhotoUrl = null);
 
     /// <summary>Today's details for one member (the side panel).</summary>
     public sealed record TeamMemberDetail(
@@ -58,7 +59,7 @@ namespace F9SDMS.Services
                 .ToListAsync();
             var todaySessions = await db.AttendanceSessions.AsNoTracking()
                 .Where(s => ids.Contains(s.EmployeeId) && s.ClockInTime >= today)
-                .Select(s => new { s.EmployeeId, s.ClockInTime, s.ClockOutTime })
+                .Select(s => new { s.EmployeeId, s.ClockInTime, s.ClockOutTime, s.CountFrom })
                 .ToListAsync();
             var lastSeen = await db.AttendanceSessions.AsNoTracking()
                 .Where(s => ids.Contains(s.EmployeeId) && s.ClockOutTime != null)
@@ -99,6 +100,22 @@ namespace F9SDMS.Services
                 .Select(p => new { p.Id, p.Sample })
                 .ToDictionaryAsync(p => p.Id);
             var checkIds = users.Where(u => u.CurrentCheckId != null).Select(u => u.CurrentCheckId!.Value).ToList();
+            // Assist Colleague: who each helper is helping, and who is helping each person on this board.
+            var helpedIds = users.Where(u => u.CurrentStatus == Assisting.Status && u.AssistingUserId != null).Select(u => u.AssistingUserId!).ToList();
+            var helpers = await db.Users.AsNoTracking()
+                .Where(u => u.CurrentStatus == Assisting.Status && u.AssistingUserId != null && ids.Contains(u.AssistingUserId) && u.CurrentProjectId != null)
+                .Select(u => new { u.Id, u.FirstName, u.AssistingUserId })
+                .ToListAsync();
+            var openHelperIds = (await db.AttendanceSessions.AsNoTracking()
+                    .Where(s => s.ClockOutTime == null)
+                    .ToListAsync())
+                .Where(s => AttendanceRules.GetAutoClockOutTime(s, now) is null)
+                .Select(s => s.EmployeeId).ToHashSet();
+            var assistNames = await db.Users.AsNoTracking()
+                .Where(u => helpedIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName })
+                .ToDictionaryAsync(u => u.Id, u => u.FirstName);
+
             var checks = await db.CheckSubmissions.AsNoTracking()
                 .Where(c => checkIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Round })
@@ -116,7 +133,7 @@ namespace F9SDMS.Services
                     .OrderByDescending(s => s.ClockInTime)
                     .FirstOrDefault();
                 var todayTotal = todaySessions.Where(s => s.EmployeeId == u.Id)
-                    .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.WorkTime(s.ClockInTime, s.ClockOutTime ?? now));
+                    .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.CountedTime(s.ClockInTime, s.CountFrom, s.ClockOutTime ?? now));
                 var overdue = assigned.Count(a => a.EmployeeId == u.Id && a.Deadline.Date < today);
                 var dueSoon = assigned.Count(a => a.EmployeeId == u.Id && a.Deadline.Date >= today && a.Deadline.Date <= today.AddDays(1));
 
@@ -146,6 +163,16 @@ namespace F9SDMS.Services
                         stateLabel = session.IsOvertime ? "Overtime · checking" : "Checking";
                         var title = TaskTitle(u.CurrentTaskId, out context) ?? "a submission";
                         headline = $"Checking: {title}" + (checks.TryGetValue(checkId, out var c) ? $" (R{c.Round})" : "");
+                    }
+                    else if (u.CurrentProjectId is int assistProject && u.CurrentStatus == Assisting.Status && u.AssistingUserId is string helpedId)
+                    {
+                        stateKey = "assist";
+                        stateLabel = session.IsOvertime ? "Overtime · assisting" : "Assisting";
+                        var title = TaskTitle(u.CurrentTaskId, out var taskContext);
+                        headline = title ?? (projects.TryGetValue(assistProject, out var ap) ? ap.Sample : "A project");
+                        var who = assistNames.TryGetValue(helpedId, out var hn) && !string.IsNullOrWhiteSpace(hn) ? hn : "a colleague";
+                        context = taskContext is null ? $"Assisting {who}" : $"Assisting {who} · {taskContext}";
+                        if (!string.IsNullOrEmpty(u.AssistNote)) since = $"“{u.AssistNote}”" + (since is null ? "" : $" · {since}");
                     }
                     else if (u.CurrentProjectId is int projectId)
                     {
@@ -190,13 +217,20 @@ namespace F9SDMS.Services
                     footer = "";
                 }
 
+                // Someone is helping this person right now.
+                var helping = helpers.Where(h => h.AssistingUserId == u.Id && openHelperIds.Contains(h.Id)).Select(h => h.FirstName).ToList();
+                if (session is not null && helping.Count > 0)
+                {
+                    footer = $"{string.Join(", ", helping)} {(helping.Count == 1 ? "is" : "are")} helping";
+                }
+
                 result.Add(new TeamMember(u.Id, name, first, initials, u.TeamManagerId ?? "", stateKey, stateLabel, context, headline, since,
-                    todayTotal, overdue, dueSoon, footer));
+                    todayTotal, overdue, dueSoon, footer, ProfilePhotos.Url(u.Id, u.PhotoUpdatedAt)));
             }
 
             int Order(string key) => key switch
             {
-                "work" or "check" or "ot" => 0,
+                "work" or "check" or "ot" or "assist" => 0,
                 "other" => 1,
                 "break" or "meet" => 2,
                 "leave" => 3,
@@ -230,13 +264,13 @@ namespace F9SDMS.Services
 
             var sessions = await db.AttendanceSessions.AsNoTracking()
                 .Where(s => s.EmployeeId == employeeId && s.ClockInTime >= monday)
-                .Select(s => new { s.ClockInTime, s.ClockOutTime })
+                .Select(s => new { s.ClockInTime, s.ClockOutTime, s.CountFrom })
                 .ToListAsync();
             // Lunch (3:00 to 4:00 PM) doesn't count.
             var todayTotal = sessions.Where(s => s.ClockInTime >= today)
-                .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.WorkTime(s.ClockInTime, s.ClockOutTime ?? now));
+                .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.CountedTime(s.ClockInTime, s.CountFrom, s.ClockOutTime ?? now));
             var weekTotal = sessions
-                .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.WorkTime(s.ClockInTime, s.ClockOutTime ?? now));
+                .Aggregate(TimeSpan.Zero, (sum, s) => sum + AttendanceRules.CountedTime(s.ClockInTime, s.CountFrom, s.ClockOutTime ?? now));
 
             var tasks = await db.TaskAssignees.AsNoTracking()
                 .Where(a => a.EmployeeId == employeeId && a.Task != null && !a.Task.IsArchived && a.Task.Status != ProjectOptions.StatusApproved)
