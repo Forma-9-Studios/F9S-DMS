@@ -261,3 +261,35 @@ f9sdms.photo = (function () {
         }
     };
 })();
+
+// ---- Lost connection: reload automatically ----
+// Blazor marks the reconnect box "rejected" when the server restarted (the page can't be
+// resumed) and "failed" when it gave up retrying. Either way, wait until the server answers
+// again and reload, so an open tab never sits on "Connection lost" and gets clocked out.
+f9sdms.watchReconnect = function () {
+    const modal = document.getElementById('components-reconnect-modal');
+    if (!modal) return;
+    let reloading = false;
+
+    const reloadWhenServerIsBack = async function () {
+        if (reloading) return;
+        reloading = true;
+        for (;;) {
+            try {
+                const response = await fetch('/', { cache: 'no-store', credentials: 'same-origin' });
+                if (response.ok) break;
+            } catch (e) {
+                // Still offline.
+            }
+            await new Promise(function (resolve) { setTimeout(resolve, 5000); });
+        }
+        location.reload();
+    };
+
+    new MutationObserver(function () {
+        const c = modal.classList;
+        if (c.contains('components-reconnect-rejected') || c.contains('components-reconnect-failed')) {
+            reloadWhenServerIsBack();
+        }
+    }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+};

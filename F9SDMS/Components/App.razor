@@ -43,14 +43,26 @@
                 <span>Reconnecting…</span>
             </div>
             <div class="reconnect-failed-state">
-                <span>Connection lost.</span>
+                <span class="page-loader-spinner"></span>
+                <span>Connection lost. Reloading as soon as it's back…</span>
                 <button type="button" class="reconnect-btn" onclick="location.reload()">Reload</button>
             </div>
         </div>
     </div>
 
     <script src="js/app.js?v=@AssetVersion"></script>
-    <script src="_framework/blazor.web.js"></script>
+    <script src="_framework/blazor.web.js" autostart="false"></script>
+    <script>
+        // Keep trying to reconnect for up to an hour (internet drop, laptop asleep) instead of
+        // giving up after a few tries; if the server no longer knows this page (it restarted),
+        // app.js reloads it as soon as the server answers, which resumes the session.
+        Blazor.start({
+            circuit: {
+                reconnectionOptions: { maxRetries: 720, retryIntervalMilliseconds: 5000 }
+            }
+        });
+        f9sdms.watchReconnect();
+    </script>
 </body>
 
 </html>

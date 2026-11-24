@@ -1,0 +1,75 @@
+﻿@using F9SDMS.Data
+@using F9SDMS.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAppClock Clock
+@inject ILogger<SessionHeartbeat> Logger
+
+@*
+    Tells the server once a minute that the person still has F9SDMS open, on every page that uses
+    the sidebar (Projects, Approvals, Requests, IT Support...). Without it, staying on one of those
+    pages for more than 15 minutes looked like the tab was closed and clocked the person out.
+    The dashboard sends its own heartbeat. Nothing is shown on screen.
+*@
+
+@code {
+    private string? userId;
+    private System.Threading.Timer? timer;
+    private bool disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.IsInRole("Admin")) return; // admins don't clock in
+            userId = UserManager.GetUserId(authState.User);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Heartbeat: couldn't read the signed-in user.");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || userId is null) return;
+        await BeatAsync();
+        timer = new System.Threading.Timer(_ => _ = InvokeAsync(BeatAsync), null, AttendanceRules.HeartbeatInterval, AttendanceRules.HeartbeatInterval);
+    }
+
+    private async Task BeatAsync()
+    {
+        if (disposed || userId is null) return;
+        try
+        {
+            var now = Clock.Now;
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var session = await db.AttendanceSessions
+                .Where(s => s.EmployeeId == userId && s.ClockOutTime == null)
+                .OrderByDescending(s => s.ClockInTime)
+                .FirstOrDefaultAsync();
+
+            // Only keeps a running session going. One that already ended (away longer than the
+            // grace period) is left for the dashboard / cleanup to close, never revived.
+            if (session is null || AttendanceRules.GetAutoClockOutTime(session, now) is not null) return;
+
+            session.LastSeenTime = now;
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Heartbeat failed.");
+        }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        timer?.Dispose();
+    }
+}
