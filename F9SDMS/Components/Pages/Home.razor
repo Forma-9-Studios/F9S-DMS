@@ -158,7 +158,7 @@
                         }
                         else
                         {
-                            <span>Since @clockInTime.Value.ToString("h:mm tt") &middot; auto logout at @((sessionEnd ?? clockInTime.Value + F9SDMS.Services.AttendanceRules.MaxSessionLength).ToString("h:mm tt"))@(F9SDMS.Services.AttendanceRules.IsLunch(Clock.Now) ? " · lunch break until 4:00 PM" : "")</span>
+                            <span>Since @((dayStart ?? clockInTime.Value).ToString("h:mm tt"))@(earlierToday > TimeSpan.Zero ? " (includes your earlier time today)" : "") &middot; auto logout at @((sessionEnd ?? clockInTime.Value + F9SDMS.Services.AttendanceRules.MaxSessionLength).ToString("h:mm tt"))@(F9SDMS.Services.AttendanceRules.IsLunch(Clock.Now) ? " · lunch break until 4:00 PM" : "")</span>
                             @if (earlyStatus == RequestOptions.StatusPending)
                             {
                                 <div class="early-note pending" role="status">
@@ -875,6 +875,11 @@
     // Signed in before 11:00 AM: when the time starts counting (null = from the sign-in), and the
     // manager's decision on an early clock-in (Pending / Approved / Rejected; null = not early).
     private DateTime? countFrom;
+
+    // Time from today's earlier sessions (e.g. clocked out by a lost connection and signed back
+    // in), so the timer carries on from where it was instead of starting again at zero.
+    private TimeSpan earlierToday;
+    private DateTime? dayStart;
     private string? earlyStatus;
     private bool isOvertimeSession;
     private TimeSpan approvedOvertimeToday;
@@ -1384,6 +1389,24 @@
         sessionEnd = F9SDMS.Services.AttendanceRules.GetEndTime(session);
         countFrom = session.CountFrom;
         earlyStatus = session.EarlyStatus;
+
+        earlierToday = TimeSpan.Zero;
+        dayStart = null;
+        if (!session.IsOvertime)
+        {
+            var day = session.ClockInTime.Date;
+            var earlier = await db.AttendanceSessions.AsNoTracking()
+                .Where(s => s.EmployeeId == session.EmployeeId && s.Id != session.Id && !s.IsOvertime
+                    && s.ClockOutTime != null && s.ClockInTime >= day && s.ClockInTime < session.ClockInTime)
+                .Select(s => new { s.ClockInTime, s.ClockOutTime, s.CountFrom })
+                .ToListAsync();
+            foreach (var s in earlier)
+            {
+                var part = s.ClockOutTime!.Value - (s.CountFrom ?? s.ClockInTime);
+                if (part > TimeSpan.Zero) earlierToday += part;
+            }
+            if (earlier.Count > 0) dayStart = earlier.Min(s => s.ClockInTime);
+        }
         approvedOvertimeToday = session.IsOvertime
             ? await F9SDMS.Services.OvertimeRules.GetApprovedExtraAsync(db, session.EmployeeId, session.ClockInTime)
             : TimeSpan.Zero;
@@ -2128,7 +2151,8 @@
             // An early sign-in only starts counting at 11:00 AM (unless a manager approved it).
             var span = Clock.Now - (countFrom ?? clockInTime.Value);
             if (span < TimeSpan.Zero) span = TimeSpan.Zero;
-            elapsed = span.ToString(@"hh\:mm\:ss");
+            span += earlierToday;
+            elapsed = $"{(int)span.TotalHours:00}:{span.Minutes:00}:{span.Seconds:00}";
         }
     }
 
