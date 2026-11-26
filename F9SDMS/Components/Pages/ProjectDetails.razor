@@ -288,7 +288,7 @@
                     {
                         <div class="log-filter">
                             <label for="historyFilter">Show</label>
-                            <select id="historyFilter" @bind="historyFilter">
+                            <select id="historyFilter" @bind="historyFilter" @bind:after="() => historyPage = 1">
                                 <option value="">All</option>
                                 @foreach (var option in historyParts)
                                 {
@@ -305,7 +305,7 @@
                 else
                 {
                     <div class="history-list">
-                        @foreach (var h in VisibleHistory)
+                        @foreach (var h in Pager.Slice(VisibleHistory, historyPage, 5))
                         {
                             <div class="history-item">
                                 <span class="history-dot result-@h.Css"></span>
@@ -335,6 +335,7 @@
                             </div>
                         }
                     </div>
+                    <Pager Total="VisibleHistory.Count()" PageSize="5" @bind-Page="historyPage" Label="Check history pages" />
                 }
             </div>
 
@@ -344,7 +345,7 @@
                     <div class="log-filters">
                         <div class="log-filter">
                             <label for="typeFilter">Type</label>
-                            <select id="typeFilter" @bind="typeFilter">
+                            <select id="typeFilter" @bind="typeFilter" @bind:after="() => logPage = 1">
                                 <option value="">All</option>
                                 <option value="@ProjectOptions.WorkModeling">Modeling</option>
                                 <option value="@ProjectOptions.WorkChecking">Checking</option>
@@ -355,7 +356,7 @@
                         {
                             <div class="log-filter">
                                 <label for="subFilter">Sub-category</label>
-                                <select id="subFilter" @bind="subFilter">
+                                <select id="subFilter" @bind="subFilter" @bind:after="() => logPage = 1">
                                     <option value="">All</option>
                                     @foreach (var option in subFilterOptions)
                                     {
@@ -380,7 +381,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var entry in VisibleEntries)
+                            @foreach (var entry in ShownEntries)
                             {
                                 <tr>
                                     <td>@entry.Name</td>
@@ -413,6 +414,7 @@
                         }
                     </table>
                 </div>
+                <Pager Total="VisibleEntries.Count()" PageSize="LogPageSize" @bind-Page="logPage" Label="Time log pages" />
                 @if (entries.Count == 0)
                 {
                     <div class="empty-state">No time logged yet. Time is logged while a task is someone's current status.</div>
@@ -561,6 +563,12 @@
 
     private IEnumerable<LogRow> VisibleEntries => entries.Where(e =>
         (subFilter == "" || e.SubKey == subFilter) && (typeFilter == "" || e.WorkType == typeFilter));
+
+    // The log is shown 5 entries per page (newest first); the total always covers all of them.
+    private const int LogPageSize = 5;
+    private int logPage = 1;
+    private int historyPage = 1;
+    private IEnumerable<LogRow> ShownEntries => Pager.Slice(VisibleEntries, logPage, LogPageSize);
 
     private IEnumerable<HistoryRow> VisibleHistory =>
         historyFilter == "" ? history : history.Where(h => h.PartKey == historyFilter);

@@ -2379,7 +2379,7 @@ textarea.rq-input { resize: vertical; }
 .tm-state-leave.tm-card, .tm-state-off.tm-card { opacity: 0.7; }
 
 .tm-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.tm-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tm-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
     .tm-person strong { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-avatar { width: 34px; height: 34px; font-size: 12px; }
 .tm-avatar-lg { width: 44px; height: 44px; font-size: 14px; }
@@ -2395,7 +2395,13 @@ textarea.rq-input { resize: vertical; }
     font-size: 12px;
     font-weight: 700;
     white-space: nowrap;
+    /* Long custom statuses shorten with "…" so the name always has room (full text shows below). */
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 50%;
 }
+    .tm-badge .tm-dot { flex-shrink: 0; }
+.tm-badge-text { overflow: hidden; text-overflow: ellipsis; }
 
 .tm-what { display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
 .tm-context { font-size: 12.5px; color: #606060; }
@@ -2672,3 +2678,18 @@ textarea.rq-input { resize: vertical; }
 .dark-mode .ec-status.pending { color: #f0c96a; }
 .dark-mode .ec-status.approved { color: #7fdca0; }
 .dark-mode .ec-status.rejected { color: #ff9d92; }
+
+/* ---- Page numbers under lists (Pager component) ---- */
+.pg { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 4px 2px; }
+.pg-info { font-size: 13px; color: #606060; font-variant-numeric: tabular-nums; }
+.pg-pages { display: flex; align-items: center; gap: 4px; }
+.pg-btn { min-width: 32px; height: 32px; padding: 0 8px; border-radius: 6px; border: 1px solid #dde3e5; background: transparent; color: #3d4f5c; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .pg-btn:hover:not(:disabled) { border-color: #098993; color: #087a83; }
+    .pg-btn.active { background: #098993; border-color: #098993; color: #ffffff; }
+    .pg-btn:disabled { opacity: 0.4; cursor: default; }
+.pg-gap { padding: 0 4px; color: #8b98a3; }
+.dark-mode .pg-info { color: #8b98a3; }
+.dark-mode .pg-btn { border-color: #2c4356; color: #c6d3dc; }
+.dark-mode .pg-btn:hover:not(:disabled) { border-color: #14a3ad; color: #5fd3da; }
+.dark-mode .pg-btn.active { background: #098993; border-color: #098993; color: #ffffff; }
+.pg.pg-padded { padding: 12px 20px 16px; }

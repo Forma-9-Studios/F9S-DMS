@@ -45,7 +45,7 @@
                                 <tr><th>Employee</th><th>Clocked in</th><th>Early by</th><th>Status</th><th></th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var e in earlyItems)
+                                @foreach (var e in Pager.Slice(EarlyOrdered, earlyPage, 5))
                                 {
                                     <tr>
                                         <td>
@@ -77,6 +77,7 @@
                             </tbody>
                         </table>
                     </div>
+                    <Pager Total="earlyItems.Count" PageSize="5" @bind-Page="earlyPage" Label="Early clock-in pages" />
                 </section>
             }
 
@@ -85,7 +86,7 @@
                     <div class="rq-tabs" role="tablist" aria-label="Status">
                         @foreach (var status in new[] { RequestOptions.StatusPending, RequestOptions.StatusApproved, RequestOptions.StatusRejected, RequestOptions.StatusCancelled })
                         {
-                            <button type="button" role="tab" aria-selected="@(statusFilter == status ? "true" : "false")" class="rq-tab @(statusFilter == status ? "active" : "")" @onclick="() => statusFilter = status">
+                            <button type="button" role="tab" aria-selected="@(statusFilter == status ? "true" : "false")" class="rq-tab @(statusFilter == status ? "active" : "")" @onclick="() => { statusFilter = status; requestPage = 1; }">
                                 @status
                                 @if (status == RequestOptions.StatusPending && rows.Any(r => r.Status == status))
                                 {
@@ -97,7 +98,7 @@
                     <div class="rq-tabs" role="tablist" aria-label="Request type">
                         @foreach (var type in new[] { "All types", "Overtime", "Leave" })
                         {
-                            <button type="button" role="tab" aria-selected="@(typeFilter == type ? "true" : "false")" class="rq-tab @(typeFilter == type ? "active" : "")" @onclick="() => typeFilter = type">@type</button>
+                            <button type="button" role="tab" aria-selected="@(typeFilter == type ? "true" : "false")" class="rq-tab @(typeFilter == type ? "active" : "")" @onclick="() => { typeFilter = type; requestPage = 1; }">@type</button>
                         }
                     </div>
                 </div>
@@ -114,7 +115,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in FilteredRows)
+                            @foreach (var row in Pager.Slice(FilteredRows, requestPage, 10))
                             {
                                 <tr>
                                     <td>
@@ -165,6 +166,7 @@
                         </tbody>
                     </table>
                 </div>
+                <Pager Total="FilteredRows.Count()" PageSize="10" @bind-Page="requestPage" Label="Request pages" />
 
                 @if (!loaded)
                 {
@@ -223,7 +225,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var emp in balanceRows)
+                                @foreach (var emp in Pager.Slice(balanceRows, balancePage, 10))
                                 {
                                     <tr>
                                         <td><span class="rq-person"><span class="rq-avatar">@emp.Initials</span><span class="rq-strong">@emp.Name</span></span></td>
@@ -251,6 +253,7 @@
                             </tbody>
                         </table>
                     </div>
+                    <Pager Total="balanceRows.Count" PageSize="10" @bind-Page="balancePage" Label="Leave balance pages" />
                     @if (loaded && balanceRows.Count == 0)
                     {
                         <div class="rq-empty">No employees yet.</div>
@@ -456,6 +459,13 @@
     private string? message;
     private bool messageIsError;
     private List<EarlyClockIns.Item> earlyItems = new();
+
+    // Lists are shown a page at a time; pending early clock-ins come first.
+    private int earlyPage = 1;
+    private int requestPage = 1;
+    private int balancePage = 1;
+    private IEnumerable<EarlyClockIns.Item> EarlyOrdered =>
+        earlyItems.OrderByDescending(e => e.Status == RequestOptions.StatusPending).ThenByDescending(e => e.ClockIn);
     private CancellationTokenSource? messageCts;
     private string? formError;
 

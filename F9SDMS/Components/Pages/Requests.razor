@@ -64,7 +64,7 @@
                 <div class="rq-tabs" role="tablist" aria-label="Request type">
                     @foreach (var tab in new[] { "All", "Overtime", "Leave" })
                     {
-                        <button type="button" role="tab" aria-selected="@(typeFilter == tab ? "true" : "false")" class="rq-tab @(typeFilter == tab ? "active" : "")" @onclick="() => typeFilter = tab">@tab</button>
+                        <button type="button" role="tab" aria-selected="@(typeFilter == tab ? "true" : "false")" class="rq-tab @(typeFilter == tab ? "active" : "")" @onclick="() => { typeFilter = tab; requestPage = 1; }">@tab</button>
                     }
                 </div>
                 <span class="rq-muted">Newest first</span>
@@ -84,7 +84,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var row in FilteredRows)
+                        @foreach (var row in Pager.Slice(FilteredRows, requestPage, 10))
                         {
                             <tr>
                                 <td><span class="rq-pill @(row.IsOvertime ? "overtime" : "leave")">@(row.IsOvertime ? "Overtime" : "Leave")</span></td>
@@ -110,6 +110,7 @@
                     </tbody>
                 </table>
             </div>
+            <Pager Total="FilteredRows.Count()" PageSize="10" @bind-Page="requestPage" Label="Request pages" />
 
             @if (!loaded)
             {
@@ -338,6 +339,7 @@
     private bool loaded;
     private bool isSaving;
     private string typeFilter = "All";
+    private int requestPage = 1;
     private List<Row> rows = new();
     private List<ProjectOption> myProjects = new();
     private EmployeeLeave? balance;

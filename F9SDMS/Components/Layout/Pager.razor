@@ -1,0 +1,72 @@
+﻿@* Page numbers under a list: "1–10 of 34   ‹ 1 2 3 4 ›". Hidden when everything fits on one page.
+   The page slices its own list with Pager.Slice(items, page, size) and binds the page with @bind-Page. *@
+
+@if (PageCount > 1)
+{
+    <nav class="pg @Class" aria-label="@Label">
+        <span class="pg-info">@First–@Last of @Total</span>
+        <span class="pg-pages">
+            <button type="button" class="pg-btn" @onclick="() => Go(Current - 1)" disabled="@(Current == 1)" aria-label="Previous page">‹</button>
+            @foreach (var n in Numbers())
+            {
+                if (n == 0)
+                {
+                    <span class="pg-gap" aria-hidden="true">…</span>
+                }
+                else
+                {
+                    var number = n;
+                    <button type="button" class="pg-btn @(number == Current ? "active" : "")" aria-current="@(number == Current ? "page" : null)" @onclick="() => Go(number)">@number</button>
+                }
+            }
+            <button type="button" class="pg-btn" @onclick="() => Go(Current + 1)" disabled="@(Current == PageCount)" aria-label="Next page">›</button>
+        </span>
+    </nav>
+}
+
+@code {
+    /// <summary>How many items the whole list has (after filters).</summary>
+    [Parameter] public int Total { get; set; }
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Pages";
+    [Parameter] public string? Class { get; set; }
+
+    private int PageCount => PageCountFor(Total, PageSize);
+    private int Current => Math.Clamp(Page, 1, PageCount);
+    private int First => (Current - 1) * PageSize + 1;
+    private int Last => Math.Min(Current * PageSize, Total);
+
+    private async Task Go(int page)
+    {
+        page = Math.Clamp(page, 1, PageCount);
+        if (page == Page) return;
+        await PageChanged.InvokeAsync(page);
+    }
+
+    // All pages when there are few; otherwise first, last and the ones around the current page (0 = "…").
+    private List<int> Numbers()
+    {
+        if (PageCount <= 7) return Enumerable.Range(1, PageCount).ToList();
+        var pages = new List<int> { 1 };
+        var from = Math.Max(2, Current - 1);
+        var to = Math.Min(PageCount - 1, Current + 1);
+        if (from > 2) pages.Add(0);
+        for (var i = from; i <= to; i++) pages.Add(i);
+        if (to < PageCount - 1) pages.Add(0);
+        pages.Add(PageCount);
+        return pages;
+    }
+
+    public static int PageCountFor(int total, int pageSize) =>
+        Math.Max(1, (int)Math.Ceiling(total / (double)Math.Max(1, pageSize)));
+
+    /// <summary>The items on <paramref name="page"/> (kept within the pages that exist).</summary>
+    public static IEnumerable<T> Slice<T>(IEnumerable<T> items, int page, int pageSize)
+    {
+        var list = items as IReadOnlyCollection<T> ?? items.ToList();
+        var current = Math.Clamp(page, 1, PageCountFor(list.Count, pageSize));
+        return list.Skip((current - 1) * pageSize).Take(pageSize);
+    }
+}

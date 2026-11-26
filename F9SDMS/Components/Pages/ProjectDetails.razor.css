@@ -1385,3 +1385,6 @@
     background: rgba(79, 195, 247, 0.15);
     color: #4fc3f7;
 }
+
+.log-card ::deep .pg { padding: 12px 20px 16px; }
+.history-card ::deep .pg { padding: 12px 20px 16px; }

@@ -574,8 +574,8 @@
                 <div class="employees-header">
                     <h2>Employees</h2>
                     <div class="ov-seg" role="tablist" aria-label="Show">
-                        <button type="button" role="tab" aria-selected="@(employeeFilter == "active" ? "true" : "false")" class="ov-seg-btn @(employeeFilter == "active" ? "active" : "")" @onclick="@(() => employeeFilter = "active")">Active (@employees.Count(e => e.IsActive))</button>
-                        <button type="button" role="tab" aria-selected="@(employeeFilter == "inactive" ? "true" : "false")" class="ov-seg-btn @(employeeFilter == "inactive" ? "active" : "")" @onclick="@(() => employeeFilter = "inactive")">Deactivated (@employees.Count(e => !e.IsActive))</button>
+                        <button type="button" role="tab" aria-selected="@(employeeFilter == "active" ? "true" : "false")" class="ov-seg-btn @(employeeFilter == "active" ? "active" : "")" @onclick="@(() => { employeeFilter = "active"; employeePage = 1; })">Active (@employees.Count(e => e.IsActive))</button>
+                        <button type="button" role="tab" aria-selected="@(employeeFilter == "inactive" ? "true" : "false")" class="ov-seg-btn @(employeeFilter == "inactive" ? "active" : "")" @onclick="@(() => { employeeFilter = "inactive"; employeePage = 1; })">Deactivated (@employees.Count(e => !e.IsActive))</button>
                     </div>
                 </div>
 
@@ -594,7 +594,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var emp in employees.Where(e => e.IsActive == (employeeFilter == "active")))
+                        @foreach (var emp in Pager.Slice(employees.Where(e => e.IsActive == (employeeFilter == "active")), employeePage, 10))
                         {
                             <tr class="@(emp.IsActive ? "" : "acct-inactive-row")">
                                 <td>
@@ -624,6 +624,7 @@
                         }
                     </tbody>
                 </table>
+                <Pager Total="@employees.Count(e => e.IsActive == (employeeFilter == "active"))" PageSize="10" @bind-Page="employeePage" Label="Employee pages" />
             </div>
         }
         </div>
@@ -912,6 +913,7 @@
     private HashSet<string> activeEmployeeIds = new();
 
     private string? currentUserId;
+    private int employeePage = 1;
     private string currentStatus = "Available";
     private int? currentProjectId;
     private List<MyProject> myProjects = new();

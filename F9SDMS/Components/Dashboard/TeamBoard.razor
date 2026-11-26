@@ -43,7 +43,7 @@
                     <button type="button" class="tm-card tm-state-@m.StateKey" @onclick="() => OpenDetail(m)">
                         <span class="tm-card-top">
                             <span class="tm-person">@if (m.PhotoUrl is not null) { <img class="ov-avatar tm-avatar avatar-photo" src="@m.PhotoUrl" alt="" /> } else { <span class="ov-avatar tm-avatar">@m.Initials</span> }<strong>@m.Name</strong></span>
-                            <span class="tm-badge"><i class="tm-dot"></i>@m.StateLabel</span>
+                            <span class="tm-badge" title="@m.StateLabel"><i class="tm-dot"></i><span class="tm-badge-text">@m.StateLabel</span></span>
                         </span>
                         <span class="tm-what">
                             @if (!string.IsNullOrEmpty(m.Context))

@@ -34,11 +34,11 @@
             <div class="table-toolbar">
                 <div class="filter">
                     <label for="projectSearch">Search</label>
-                    <input id="projectSearch" type="search" class="filter-input" placeholder="Sample, category, engineer…" @bind="search" @bind:event="oninput" />
+                    <input id="projectSearch" type="search" class="filter-input" placeholder="Sample, category, engineer…" @bind="search" @bind:event="oninput" @bind:after="() => projectPage = 1" />
                 </div>
                 <div class="filter">
                     <label for="lodFilter">LOD</label>
-                    <select id="lodFilter" class="filter-input" @bind="lodFilter">
+                    <select id="lodFilter" class="filter-input" @bind="lodFilter" @bind:after="() => projectPage = 1">
                         <option value="">All</option>
                         @foreach (var lod in ProjectOptions.LodOptions)
                         {
@@ -48,7 +48,7 @@
                 </div>
                 <div class="filter">
                     <label for="statusFilter">Status</label>
-                    <select id="statusFilter" class="filter-input" @bind="statusFilter">
+                    <select id="statusFilter" class="filter-input" @bind="statusFilter" @bind:after="() => projectPage = 1">
                         <option value="">All</option>
                         @foreach (var status in ProjectOptions.Statuses)
                         {
@@ -73,7 +73,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var p in Filtered)
+                        @foreach (var p in Pager.Slice(Filtered, projectPage, 10))
                         {
                             var assignees = p.Assignments
                                 .Where(a => a.Role != ProjectOptions.RoleChecker)
@@ -134,6 +134,7 @@
                     </tbody>
                 </table>
             </div>
+            <Pager Total="Filtered.Count()" PageSize="10" @bind-Page="projectPage" Label="Project pages" Class="pg-padded" />
 
             @if (pageMessage is not null)
             {
@@ -443,6 +444,7 @@
     private string search = "";
     private string lodFilter = "";
     private string statusFilter = "";
+    private int projectPage = 1;
 
     private ProjectEditor? editor;
 
